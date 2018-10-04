@@ -1,0 +1,126 @@
+;; ws   … workspace
+;; act  … action
+;; comp … computation
+
+;;;; ws
+
+{:db/ident :ws/content
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws/comp
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws/proc
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
+;;;; ws.content
+
+;; All refer to hypertext.
+
+{:db/ident :ws.content/question
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws.content/answer
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws.content/sub-ws
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/many}
+
+;;;; ws.comp
+
+{:db/ident :ws.comp/source
+ :db/valueType :db.type/ref                                 ; act
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws.comp/result
+ :db/valueType :db.type/ref                                 ; act
+ :db/cardinality :db.cardinality/one}
+
+;;;; ws.proc
+
+{:db/ident :ws.proc/state
+ :db/valueType :db.type/ref                                 ; enum
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws.proc/waiting-for
+ :db/valueType :db.type/ref                                 ; ws
+ :db/cardinality :db.cardinality/many}
+
+;;;; ws.state
+
+[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/showing]
+[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/pending]
+[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/retired]
+
+;;;; act
+
+{:db/ident :act/command
+ :db/valueType :db.type/ref                                 ; enum
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :act/content
+ :db/valueType :db.type/ref                                 ; hypertext
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :act/comp
+ :db/valueType :db.type/ref                                 ; act.comp
+ :db/cardinality :db.cardinality/one}
+
+;;;; act.comp
+
+{:db/ident :ws.comp/source
+ :db/valueType :db.type/ref                                 ; ws
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws.comp/result
+ :db/valueType :db.type/ref                                 ; ws
+ :db/cardinality :db.cardinality/many}
+
+;;;; act.command
+
+[:db/add #db/id[:db.part/user] :db/ident :act.command/ask]
+[:db/add #db/id[:db.part/user] :db/ident :act.command/reply]
+[:db/add #db/id[:db.part/user] :db/ident :act.command/unlock]
+[:db/add #db/id[:db.part/user] :db/ident :act.command/reflect]
+
+;;;; hypertext
+
+{:db/ident :hypertext/content
+ :db/valueType :db.type/string                              ; with embedded pointer names
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :hypertext/pointer
+ :db/valueType :db.type/ref                                 ; pointer
+ :db/cardinality :db.cardinality/one}
+
+;;;; pointer
+
+{:db/ident :pointer/name
+ :db/valueType :db.type/string
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :pointer/target
+ :db/valueType :db.type/ref                                 ; anything (?)
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :pointer/locked?
+ :db/valueType :db.type/boolean                             ; anything (?)
+ :db/cardinality :db.cardinality/one}
+
+;; We still have the hypertext at the bottom, which contains of strings and
+;; things that point at stuff.
+;; When associated with a ws, these hypertexts are combined with
+;; something that indicates whether or not pointers are locked.
+
+;; - Collect the attributes into groups or sub-entities. The first three ones
+;; up there as content. The reflection graph stuff as computation. Or similar.
+;; - Have a state on wss. Something like "processing now", "pending",
+;; "done". This way the renderer can decide how to render the ws's
+;; pointers. And the unlock action knows which pointers can be unlocked and
+;; which cannot.
