@@ -6,14 +6,17 @@
 
 {:db/ident :ws/content
  :db/valueType :db.type/ref
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :ws/comp
  :db/valueType :db.type/ref
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :ws/proc
  :db/valueType :db.type/ref
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 ;;;; ws.content
@@ -74,11 +77,11 @@
 
 ;;;; act.comp
 
-{:db/ident :ws.comp/source
+{:db/ident :act.comp/source
  :db/valueType :db.type/ref                                 ; ws
  :db/cardinality :db.cardinality/one}
 
-{:db/ident :ws.comp/result
+{:db/ident :act.comp/result
  :db/valueType :db.type/ref                                 ; ws
  :db/cardinality :db.cardinality/many}
 
@@ -93,11 +96,13 @@
 
 {:db/ident :hypertext/content
  :db/valueType :db.type/string                              ; with embedded pointer names
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :hypertext/pointer
  :db/valueType :db.type/ref                                 ; pointer
- :db/cardinality :db.cardinality/one}
+ :db/isComponent true
+ :db/cardinality :db.cardinality/many}
 
 ;;;; pointer
 
@@ -112,15 +117,3 @@
 {:db/ident :pointer/locked?
  :db/valueType :db.type/boolean                             ; anything (?)
  :db/cardinality :db.cardinality/one}
-
-;; We still have the hypertext at the bottom, which contains of strings and
-;; things that point at stuff.
-;; When associated with a ws, these hypertexts are combined with
-;; something that indicates whether or not pointers are locked.
-
-;; - Collect the attributes into groups or sub-entities. The first three ones
-;; up there as content. The reflection graph stuff as computation. Or similar.
-;; - Have a state on wss. Something like "processing now", "pending",
-;; "done". This way the renderer can decide how to render the ws's
-;; pointers. And the unlock action knows which pointers can be unlocked and
-;; which cannot.
