@@ -9,11 +9,6 @@
  :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
-{:db/ident :ws/comp
- :db/valueType :db.type/ref
- :db/isComponent true
- :db/cardinality :db.cardinality/one}
-
 {:db/ident :ws/proc
  :db/valueType :db.type/ref
  :db/isComponent true
@@ -34,16 +29,6 @@
 {:db/ident :ws.content/sub-ws
  :db/valueType :db.type/ref
  :db/cardinality :db.cardinality/many}
-
-;;;; ws.comp
-
-{:db/ident :ws.comp/source
- :db/valueType :db.type/ref                                 ; act
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :ws.comp/result
- :db/valueType :db.type/ref                                 ; act
- :db/cardinality :db.cardinality/one}
 
 ;;;; ws.proc
 
@@ -71,20 +56,6 @@
  :db/valueType :db.type/ref                                 ; hypertext
  :db/cardinality :db.cardinality/one}
 
-{:db/ident :act/comp
- :db/valueType :db.type/ref                                 ; act.comp
- :db/cardinality :db.cardinality/one}
-
-;;;; act.comp
-
-{:db/ident :act.comp/source
- :db/valueType :db.type/ref                                 ; ws
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :act.comp/result
- :db/valueType :db.type/ref                                 ; ws
- :db/cardinality :db.cardinality/many}
-
 ;;;; act.command
 
 [:db/add #db/id[:db.part/user] :db/ident :act.command/ask]
@@ -92,11 +63,16 @@
 [:db/add #db/id[:db.part/user] :db/ident :act.command/unlock]
 [:db/add #db/id[:db.part/user] :db/ident :act.command/reflect]
 
+;;;; tx
+
+{:db/ident :tx/act
+ :db/valueType :db.type/ref                                 ; act
+ :db/cardinality :db.cardinality/one}
+
 ;;;; hypertext
 
 {:db/ident :hypertext/content
  :db/valueType :db.type/string                              ; with embedded pointer names
- :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :hypertext/pointer
