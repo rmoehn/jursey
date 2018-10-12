@@ -1,6 +1,17 @@
 ;; ws   … workspace
 ;; act  … action
-;; comp … computation
+
+;;;; user
+
+{:db/ident :user/handle
+ :db/valueType :db.type/string
+ :db/unique :db.unique/identity
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :user/root-ws
+ :db/valueType :db.type/ref                                 ;
+ :db/cardinality :db.cardinality/many}
+
 
 ;;;; ws
 
