@@ -159,6 +159,17 @@
 ;; If time is limited, skip the probably easy stuff and go for the things
 ;; with the most expected problems.
 
+;; TODO: Do it with automation. – That means, every time we have a new
+;; workspace, we have to go through the whole history to see whether there
+;; was an equivalent workspace, then find the action taken from there. This
+;; is an important test for my model. Not sure if it will get through it.
+;; Need to find all actions from transactions in history,  the source ws of
+;; those actions, (render it) and compare it with the current ws. Have to
+;; make sure that the ws wasn't later retracted maybe.
+
+;; First: Find all actions in history and the workspace state before/after.
+;; How do I know which workspace an action was applied to?
+
 ;; TODO: Do the whole thing again with actual pointers.
 ;; TODO: Do it another time with sub-questions.
 ;; TODO: Implement the event system around it.
