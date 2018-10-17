@@ -9,8 +9,8 @@
 
 (def uri "datomic:free://localhost:4334/jursey")
 
-;; TODO: (next time I start over with the db) Rename user to agent, because
-;; not only users will be taking actions.
+;; TODO: (next time I start over with the db) Rename agent to agent, because
+;; not only agents will be taking actions.
 (d/delete-database uri)
 
 (d/create-database uri)
@@ -24,20 +24,16 @@
 (d/transact conn schema)
 
 
-;;;; Users (schema change)
+;;;; Users
 
-(def new-attrs (filter #(#{:user/handle :user/root-ws} (:db/ident %))
-                       schema))
-(d/transact conn new-attrs)
-
-(d/transact conn [{:user/handle "test"}])
+(d/transact conn [{:agent/handle "test"}])
 
 
 ;;;; Ask a question
 
 (def first-question
-  [{:db/id [:user/handle "test"]
-    :user/root-ws "wsid"}
+  [{:db/id [:agent/handle "test"]
+    :agent/root-ws "wsid"}
    {:db/id "qhtid"
     :hypertext/content "What is 20 * 30?"}
    {:db/id "wsid"
@@ -46,10 +42,7 @@
 
 @(d/transact conn first-question)
 
-;; After adding users to the schema.
-(d/transact conn
-            [{:db/id [:user/handle "test"]
-              :user/root-ws ws-id}])
+;;;; Play around
 
 ;; Note: I'm using (db conn) only for this interactive exploration. Functions
 ;; should only receive the result of (db conn), not conn.
@@ -58,10 +51,7 @@
      [?ws :ws/content ?c]
      [?c :ws.content/question ?ht]
      [?ht :hypertext/content ?text]]
-  (db conn))
-
-
-;;;; Play around
+   (db conn))
 
 ;; Search for a waited-for workspace.
 (q '[:find [?ws ...]
@@ -107,6 +97,7 @@
     :act/command :act.command/reply
     :act/content "acthtid"}
    {:db/id "datomic.tx"
+    :tx/ws ws-id
     :tx/act "actid"}])
 
 @(d/transact conn first-answer)
@@ -128,30 +119,36 @@
 
 (d/tx->t 13194139534325)
 
-;; Identify the root question and its answer to show them to the user.
+;; Identify the root question and its answer to show them to the agent.
 (q '[:find ?q ?a
      :where
-     [?u :user/handle "test"]
-     [?u :user/root-ws ?ws]
+     [?u :agent/handle "test"]
+     [?u :agent/root-ws ?ws]
      [?ws :ws/content ?c]
      [?c :ws.content/answer ?aht]
      [?c :ws.content/question ?qht]
      [?aht :hypertext/content ?a]
      [?qht :hypertext/content ?q]]
    (db conn))
-;; From this we get all questions that the users has ever asked and their
-;; answers. How should this actually be? What would the user want to see?
+;; From this we get all questions that the agents has ever asked and their
+;; answers. How should this actually be? What would the agent want to see?
 ;; Only the most recently answered questions?
 ;; Patchwork so far has runs from root question to root answer. How would I
 ;; do this in Jursey? – I could just keep the ID of the root ws until the end.
 
-;; TODO: Should we attach user/agent IDs to the actions for introspection?
+;; TODO: Should we attach agent/agent IDs to the actions for introspection?
 ;; (Not reflection.)
 
 ;;;; Reflect
 
-;; TODO: The user wants to know how the root question came about. Were there
+;; NEXT!
+;; TODO: The agent wants to know how the root question came about. Were there
 ;; any subquestions asked?
+;; - The Datomic log contains all data on what action caused what
+;;   database changes. The question is whether we can easily extract the
+;;   information required for reflection from that.
+;; The model here is a little different from Patchwork. Think about what the
+;; user wants to see. It might be different for different actions.
 
 
 ;;;; Next steps
@@ -167,8 +164,19 @@
 ;; those actions, (render it) and compare it with the current ws. Have to
 ;; make sure that the ws wasn't later retracted maybe.
 
-;; First: Find all actions in history and the workspace state before/after.
-;; How do I know which workspace an action was applied to?
+;; First: Find all actions in history and the workspace state before.
+;; The following gives me workspaces and actions that were taken from there
+;; (entity IDs only). Using the ?tx and d/as-of I can find out how the
+;; workspace looked at that time. So this is no problem. If we decide that we
+;; want to be able to retract workspaces, we can check whether one with ID
+;; ?ws exists in the present database before looking in the as-of database.
+(q '[:find ?tx ?ws ?a
+     :in $ ?log
+     :where
+     [?tx :tx/ws ?ws]
+     [?tx :tx/act ?a]]
+  (db conn)
+  (d/log conn))
 
 ;; TODO: Do the whole thing again with actual pointers.
 ;; TODO: Do it another time with sub-questions.

@@ -3,12 +3,12 @@
 
 ;;;; user
 
-{:db/ident :user/handle
+{:db/ident :agent/handle
  :db/valueType :db.type/string
  :db/unique :db.unique/identity
  :db/cardinality :db.cardinality/one}
 
-{:db/ident :user/root-ws
+{:db/ident :agent/root-ws
  :db/valueType :db.type/ref                                 ;
  :db/cardinality :db.cardinality/many}
 
@@ -78,6 +78,10 @@
 
 {:db/ident :tx/act
  :db/valueType :db.type/ref                                 ; act
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :tx/ws
+ :db/valueType :db.type/ref                                 ; ws
  :db/cardinality :db.cardinality/one}
 
 ;;;; hypertext
