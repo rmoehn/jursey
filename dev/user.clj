@@ -1,9 +1,7 @@
 (ns user
   [:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [datomic.api :refer [q db] :as d]
-            [datomic.api :as d]
-            [datascript.core :as d]])
+            [datomic.api :refer [q db] :as d]])
 
 ;;;; Setup
 
@@ -74,6 +72,14 @@
 ;; I probably want to build an interface around this.
 (d/pull (db conn) '[{:ws/content [{:ws.content/question [:hypertext/content]}]}] ws-id)
 
+(defn ws-data [db ws-id]
+  (d/pull db
+          '[{:ws/content [{:ws.content/question [:hypertext/content]
+                           :ws.content/answer   [:hypertext/content]}
+                          :ws.content/sub-ws]
+             :ws/proc    [{:ws.proc/state [:db/ident]} :ws.proc/waiting-for]}]
+          ws-id))
+
 ;; TODO: Find and assemble all information for the workspace to be shown.
 ;; TODO: Render the workspace.
 
@@ -141,7 +147,9 @@
 
 ;;;; Reflect
 
-;; NEXT!
+;; NEXT: Transact the scenario with the pictures that I sent to Andreas. Then
+;; reflect.
+
 ;; TODO: The agent wants to know how the root question came about. Were there
 ;; any subquestions asked?
 ;; - The Datomic log contains all data on what action caused what
@@ -149,6 +157,15 @@
 ;;   information required for reflection from that.
 ;; The model here is a little different from Patchwork. Think about what the
 ;; user wants to see. It might be different for different actions.
+;; - reply: What can happen? Main ws acquires an answer. Other wss
+;;   might stop waiting for the main ws. The latter shouldn't show up in
+;;   reflection, so it's only ws before – action – ws after.
+;; - ask: What happens? Main ws acquires a sub-ws. Again ws before
+;;   action – ws after.
+;; - unlock: What happens? Main ws is set to waiting-for the
+;;   sub-ws. This is like pushing the sub-ws on the stack?
+;; - We get into a mix-up of history and stack? – It's two views.
+;;   - how does this fit together with the graph idea? See my notes on paper.
 
 
 ;;;; Next steps
