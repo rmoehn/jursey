@@ -121,7 +121,7 @@
      [?ws :ws/content ?c]
      (not [_ :ws.content/sub-ws ?ws])
      (not [?c :ws.content/answer _])]
-   (d/as-of (db conn) 1013))
+   (db conn))
 
 (d/tx->t 13194139534325)
 
@@ -198,3 +198,88 @@
 ;; TODO: Do the whole thing again with actual pointers.
 ;; TODO: Do it another time with sub-questions.
 ;; TODO: Implement the event system around it.
+
+(defn ask-root [conn agent content]
+  (d/transact conn
+              [{:db/id         [:agent/handle agent]
+                :agent/root-ws "wsid"}
+               {:db/id             "qhtid"
+                :hypertext/content content}
+               {:db/id      "wsid"
+                :ws/content {:ws.content/question "qhtid"}
+                :ws/proc    {:ws.proc/state :ws.proc.state/pending}}]))
+
+(ask-root conn "test" "What is 51 * 5019")
+
+
+(defn ask [conn ws-id content]
+  (let [ws-cont-id (q '[:find ?c .
+                        :in $ ?ws
+                        :where [?ws :ws/content ?c]]
+                      (db conn) ws-id)]
+    (d/transact conn
+                [{:db/id             "qhtid"
+                  :hypertext/content content}
+                 {:db/id             ws-cont-id
+                  :ws.content/sub-ws "new-wsid"}
+                 {:db/id      "new-wsid"
+                  :ws/content {:ws.content/question "qhtid"}
+                  :ws/proc    {:ws.proc/state :ws.proc.state/pending}}])))
+
+; TODO: Put the waiting-for in here. But changed. We need wss that are
+; waited-for, but not waiting for.
+(defn wss-to-show [db]
+  (q '[:find [?ws ...]
+      :where
+      [?ws :ws/content ?c]
+      (not [_ :ws.content/sub-ws ?ws])
+      (not [?c :ws.content/answer _])]
+     db))
+
+(q '[:find [?ws ...]
+     :where
+     [_ :ws/proc ?p]
+     [?p :ws.proc/waiting-for ?ws]
+     [?ws :ws/proc ?subp]
+     (not [?subp :ws.proc/waiting-for _])]
+   (db conn))
+
+;; Unlocking an answer, ie. unlocking a sub-ws is easy. But how would I do
+;; this in general?
+;; When I create a ws, I also add an answer with hypertext that contains only
+;; a pointer? But that would complicate queries.
+;; When I unlock a pointer and the pointer points to an answer that hasn't
+;; yet been given… But an answer that hasn't been given doesn't exist. So the
+;; pointer has nothing to point to. It could point to [ws :answer]. That
+;; would be like a pull spec and if there is no result, it means that the
+;; answer doesn't yet exist, so if I unlock it, I have to set the ws to
+;; waited-for.
+;; TODO: Think about the unlocking of fulfilled and unfulfilled pointers.
+(defn unlock-answer [conn sub-ws-id])
+
+(def cur-ws (first (wss-to-show (db conn))))
+
+(ask conn cur-ws "What is 50 * 5019?")
+
+(ask conn cur-ws "What is 50?")
+
+(wss-to-show (db conn))
+
+(d/transact conn
+            (map (fn [wsid] [:db.fn/retractEntity wsid])
+                 (q '[:find [?ws ...]
+                      :where [?ws :ws/content _]]
+                    (db conn))))
+
+(let [cur-db (db conn)
+      cur-ws (first (wss-to-show cur-db))]
+  [(wss-to-show cur-db) (map #(ws-data cur-db %)
+                             (wss-to-show cur-db))])
+
+
+(d/pull (db conn)
+        '[:ws/content]
+        (first (wss-to-show (db conn))))
+
+;; NEXT: Implement unlocking, then add the transaction data to the action
+;; transactions.
