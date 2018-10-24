@@ -76,12 +76,12 @@
 
 ;;;; tx
 
-{:db/ident :tx/act
- :db/valueType :db.type/ref                                 ; act
- :db/cardinality :db.cardinality/one}
-
 {:db/ident :tx/ws
  :db/valueType :db.type/ref                                 ; ws
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :tx/act
+ :db/valueType :db.type/ref                                 ; act
  :db/cardinality :db.cardinality/one}
 
 ;;;; hypertext

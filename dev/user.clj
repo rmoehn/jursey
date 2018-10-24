@@ -1,7 +1,9 @@
 (ns user
   [:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [datomic.api :refer [q db] :as d]])
+            [datomic.api :refer [q db] :as d]
+            [datomic.api :as d]
+            [datomic.api :as d]])
 
 ;;;; Setup
 
@@ -192,8 +194,8 @@
      :where
      [?tx :tx/ws ?ws]
      [?tx :tx/act ?a]]
-  (db conn)
-  (d/log conn))
+   (db conn)
+   (d/log conn))
 
 ;; TODO: Do the whole thing again with actual pointers.
 ;; TODO: Do it another time with sub-questions.
@@ -212,6 +214,7 @@
 (ask-root conn "test" "What is 51 * 5019")
 
 
+;; TODO: Factor out a function that creates the transaction data for actions.
 (defn ask [conn ws-id content]
   (let [ws-cont-id (q '[:find ?c .
                         :in $ ?ws
@@ -224,25 +227,39 @@
                   :ws.content/sub-ws "new-wsid"}
                  {:db/id      "new-wsid"
                   :ws/content {:ws.content/question "qhtid"}
-                  :ws/proc    {:ws.proc/state :ws.proc.state/pending}}])))
+                  :ws/proc    {:ws.proc/state :ws.proc.state/pending}}
+                 {:db/id "datomic.tx"
+                  :tx/ws ws-id
+                  :tx/act "actid"}
+                 {:db/id "acthtid"
+                  :hypertext/content content}
+                 {:db/id "actid"
+                  :act/command :act.command/ask
+                  :act/content "acthtid"}])))
 
 ; TODO: Put the waiting-for in here. But changed. We need wss that are
 ; waited-for, but not waiting for.
 (defn wss-to-show [db]
-  (q '[:find [?ws ...]
-      :where
-      [?ws :ws/content ?c]
-      (not [_ :ws.content/sub-ws ?ws])
-      (not [?c :ws.content/answer _])]
-     db))
+  (let [non-waiting-root-wss
+        (q '[:find [?ws ...]
+             :where
+             [?ws :ws/content ?c]
+             (not [_ :ws.content/sub-ws ?ws])
+             (not [?c :ws.content/answer _])
+             [?ws :ws/proc ?p]
+             (not [?p :ws.proc/waiting-for _])]
+           db)
+        waited-for-other-wss
+        (q '[:find [?ws ...]
+             :where
+             [_ :ws/proc ?p]
+             [?p :ws.proc/waiting-for ?ws]
+             [?ws :ws/proc ?subp]
+             (not [?subp :ws.proc/waiting-for _])]
+           db)]
+    (concat non-waiting-root-wss waited-for-other-wss)))
 
-(q '[:find [?ws ...]
-     :where
-     [_ :ws/proc ?p]
-     [?p :ws.proc/waiting-for ?ws]
-     [?ws :ws/proc ?subp]
-     (not [?subp :ws.proc/waiting-for _])]
-   (db conn))
+
 
 ;; Unlocking an answer, ie. unlocking a sub-ws is easy. But how would I do
 ;; this in general?
@@ -255,7 +272,26 @@
 ;; answer doesn't yet exist, so if I unlock it, I have to set the ws to
 ;; waited-for.
 ;; TODO: Think about the unlocking of fulfilled and unfulfilled pointers.
-(defn unlock-answer [conn sub-ws-id])
+(defn unlock-answer [conn sub-ws-id]
+  (let [[ws-id ws-proc-id]
+        (q '[:find [?ws ?p]
+             :in $ ?sub-ws
+             :where
+             [?ws :ws/content ?c]
+             [?c :ws.content/sub-ws ?sub-ws]
+             [?ws :ws/proc ?p]]
+           (db conn) sub-ws-id)]
+    (d/transact conn
+                [{:db/id ws-proc-id
+                  :ws.proc/waiting-for sub-ws-id}
+                 {:db/id "actid"
+                  :act/command :act.command/unlock
+                  :act/content "acthtid"}
+                 {:db/id "acthtid"
+                  :hypertext/content sub-ws-id}             ; This is not right.
+                 {:db/id "datomic.tx"
+                  :tx/ws ws-id
+                  :tx/act "actic"}])))
 
 (def cur-ws (first (wss-to-show (db conn))))
 
@@ -277,9 +313,15 @@
                              (wss-to-show cur-db))])
 
 
+
+(unlock-answer conn 17592186045433)
+
+
 (d/pull (db conn)
         '[:ws/content]
         (first (wss-to-show (db conn))))
 
-;; NEXT: Implement unlocking, then add the transaction data to the action
-;; transactions.
+(d/basis-t (db conn))
+
+;; NEXT: ✔ Implement unlocking, ✔ then fix wss-to-show, ✔ then add the
+;; transaction data to the action transactions.
