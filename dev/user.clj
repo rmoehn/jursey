@@ -1,6 +1,7 @@
 (ns user
   [:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [com.rpl.specter :as s]
             [datomic.api :refer [q db] :as d]
             [datomic.api :as d]
             [datomic.api :as d]])
@@ -71,7 +72,8 @@
 (def ws-content-id
   (:db/id (:ws/content (d/pull (db conn) '[{:ws/content [:db/id]}] ws-id))))
 
-;; I probably want to build an interface around this.
+;; I probably want to build an interface around this. (see also code
+;; annotated with Interface!)
 (d/pull (db conn) '[{:ws/content [{:ws.content/question [:hypertext/content]}]}] ws-id)
 
 (defn ws-data [db ws-id]
@@ -291,7 +293,7 @@
                   :hypertext/content sub-ws-id}             ; This is not right.
                  {:db/id "datomic.tx"
                   :tx/ws ws-id
-                  :tx/act "actic"}])))
+                  :tx/act "actid"}])))
 
 (def cur-ws (first (wss-to-show (db conn))))
 
@@ -323,5 +325,87 @@
 
 (d/basis-t (db conn))
 
-;; NEXT: ✔ Implement unlocking, ✔ then fix wss-to-show, ✔ then add the
-;; transaction data to the action transactions.
+;; NEXT: Figure out pointers.
+
+
+;;;; Rendering a workspace
+
+(def ws-id (q '[:find ?ws .
+                :where [?ws :ws/content _]]
+              (db conn)))
+
+(ws-data (db conn) ws-id)
+
+
+(type (into (array-map) (map (fn [n] [n :b]) (range 50))))
+
+
+(into (array-map) [[:question 1] [:subquestion 5] [:answer 3]])
+
+
+(def render-data {:q     {:text  "Which [1: monkey] went to zoo $2?"
+                          :p->id {1 :x
+                                  2 :x}}
+                  :sq0   {:q     {:text  "…"
+                                  :p->id {}}
+                          :a     {:text  "…"
+                                  :p->id {}}
+                          :p->id {:q :x :a :x}}
+                  :p->id {:q  :x
+                          :sq :x}})
+
+
+(defn map-text [m]
+  (cond (:text m)
+        (:text m)))
+
+(filter :text [{:text "bla"} {:b 4}])
+
+(:p->id (:q render-data))
+
+
+(s/select (s/walker :text) render-data)
+
+;; Hm, walker doesn't recurse into things for which the predicate returned true.
+;; See better: https://github.com/nathanmarz/specter/wiki/Using-Specter-Recursively
+(s/select (s/walker map?) render-data)
+
+(->> render-data
+     (s/transform (s/walker :text) :text)
+     ;(s/transform (s/walker :p->id) #(dissoc % :p->id))
+     (s/select (s/walker :p->id) )
+         )
+
+;; NEXT: Implement something that takes the complete map and returns the
+;; to-show data. Then implement something that takes the complete map and
+;; returns the to-lookup data. Then try different unlock and point to
+;; patterns to make sure this kind of navigation works. It will be
+;; complicated further by reflection. At that point I'll need recursive
+;; rendering.
+
+[:ask "How about $[q 1] and $[sq a"]
+
+(defn render-ht [db ht-id] ht-id)
+
+(defn render-sq [db sq-id] sq-id)
+
+;; Pointers within a question etc. are numbered local to that hypertext. So
+;; unlock would look like [:unlock :q 1].
+
+(let [db (db conn)
+      ; Interface!
+      ws-data (d/pull db
+                      '[{:ws/content [:ws.content/question :ws.content/sub-ws]}]
+                      ws-id)
+      q-ht-id (get-in ws-data [:ws/content :ws.content/question :db/id])
+      sq-ws-ids (s/select [:ws/content :ws.content/sub-ws s/ALL :db/id] ws-data)
+      sq-keys (into (sorted-map)
+                    (map-indexed (fn [i sq-ws-id]
+                                   [(keyword (str "sq" i)) sq-ws-id])
+                                 sq-ws-ids))
+      entries (concat [:q (render-ht db q-ht-id)]
+                      (flatten (for [[k sq-ws-id] sq-keys]
+                                 [k (render-sq db sq-ws-id)])) )
+      to-show (apply array-map entries)
+      to-keep (assoc sq-keys :q q-ht-id)]
+  [to-show to-keep])
