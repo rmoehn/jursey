@@ -1,10 +1,12 @@
 (ns user
   [:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.walk :as walk]
             [com.rpl.specter :as s]
             [datomic.api :refer [q db] :as d]
             [datomic.api :as d]
-            [datomic.api :as d]])
+            [datomic.api :as d]
+            [clojure.walk :as walk]])
 
 ;;;; Setup
 
@@ -343,38 +345,47 @@
 (into (array-map) [[:question 1] [:subquestion 5] [:answer 3]])
 
 
+;; I could also generate such data with spec.
 (def render-data {:q     {:text  "Which [1: monkey] went to zoo $2?"
-                          :p->id {1 :x
-                                  2 :x}}
+                          :p->id {1 :id1
+                                  2 :id2}}
                   :sq0   {:q     {:text  "…"
                                   :p->id {}}
                           :a     {:text  "…"
                                   :p->id {}}
-                          :p->id {:q :x :a :x}}
-                  :p->id {:q  :x
-                          :sq :x}})
+                          :p->id {:q :idsq0.q :a :idsq0.a}}
+                  :p->id {:q  :idq
+                          :sq0 :idsq0}})
 
 
-(defn map-text [m]
-  (cond (:text m)
-        (:text m)))
-
-(filter :text [{:text "bla"} {:b 4}])
-
-(:p->id (:q render-data))
-
-
-(s/select (s/walker :text) render-data)
-
-;; Hm, walker doesn't recurse into things for which the predicate returned true.
-;; See better: https://github.com/nathanmarz/specter/wiki/Using-Specter-Recursively
-(s/select (s/walker map?) render-data)
-
+;; THAT WAS EASY! X-|
 (->> render-data
      (s/transform (s/walker :text) :text)
-     ;(s/transform (s/walker :p->id) #(dissoc % :p->id))
-     (s/select (s/walker :p->id) )
-         )
+     (s/setval (s/walker #(= % :p->id)) s/NONE))
+
+(def to-lookup (->> render-data
+                    (s/setval (s/walker #(= % :text)) s/NONE)))
+
+
+[:ask "Bla $[:q]"]
+
+(s/select [:p->id :q] to-lookup)
+
+[:ask "Bla $[:q 1]"]
+
+(s/select [:q :p->id 1] to-lookup)
+
+[:ask "Bla $[:sq0 :a]"]
+
+(s/select [:sq0 :p->id :a] to-lookup)
+
+[:unlock [:sq0 :a]]
+
+(s/select [:sq0 :p->id :a] to-lookup)
+
+(let [db (db conn)
+      ]
+  {})
 
 ;; NEXT: Implement something that takes the complete map and returns the
 ;; to-show data. Then implement something that takes the complete map and
@@ -385,9 +396,44 @@
 
 [:ask "How about $[q 1] and $[sq a"]
 
-(defn render-ht [db ht-id] ht-id)
+(d/pull (db conn) '[:hypertext/content] 17592186045427)
+
+
+;; TODO: Add the pointer stuff.
+(defn render-ht [db ht-id]
+  {:text (:hypertext/content (d/entity db ht-id))
+   :p->id {}})
 
 (defn render-sq [db sq-id] sq-id)
+
+;; Now I have a problem! There is no answer yet, so there is no answer
+;; hypertext yet, so I can't pass around a pointer to it, because I don't
+;; have a pointer. This is a corner case, isn't it?
+;; So I could introduce a second type of pointer that points to workspaces
+;; and which indicates the answer of that workspace, whether it exists or not.
+;; It would be like [:unlock-answer :sq0], "Look at $a[sq0].".
+
+
+;; Unfulfilled answers are a special case anyway. Two somewhat awkward
+;; solutions for now:
+;; - When a pointer points to a workspace, it means that workspace's not yet
+;;   given answer. We can put that for :a in the :p->id map.
+;; - Depending on the workspace they're shown in, pointers have to have
+;;   different string representations.
+
+
+(let [db (db conn)
+      sq-id 17592186045433
+      ws-data (d/pull db
+                      '[{:ws/content [:ws.content/question :ws.content/answer]}]
+                      ws-id)
+      q-ht-id (get-in ws-data [:ws/content :ws.content/question :db/id])
+      a-ht-id (get-in ws-data [:ws/content :ws.content/answer :db/id])
+      ]
+  ws-data
+  {:q (render-ht db q-ht-id)
+   :a a-ht-id
+   :p->id {:q q-ht-id}})
 
 ;; Pointers within a question etc. are numbered local to that hypertext. So
 ;; unlock would look like [:unlock :q 1].
@@ -403,9 +449,10 @@
                     (map-indexed (fn [i sq-ws-id]
                                    [(keyword (str "sq" i)) sq-ws-id])
                                  sq-ws-ids))
+      to-keep (assoc sq-keys :q q-ht-id)
       entries (concat [:q (render-ht db q-ht-id)]
                       (flatten (for [[k sq-ws-id] sq-keys]
-                                 [k (render-sq db sq-ws-id)])) )
-      to-show (apply array-map entries)
-      to-keep (assoc sq-keys :q q-ht-id)]
-  [to-show to-keep])
+                                 [k (render-sq db sq-ws-id)]))
+                      [:p->id to-keep])
+      to-show (apply array-map entries)]
+  to-show)
