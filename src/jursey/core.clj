@@ -1,16 +1,17 @@
-(ns user
-  [:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
-            [clojure.walk :as walk]
+(ns jursey.core
+  [:require [clojure.java.io :as io]
             [com.rpl.specter :as s]
             [datomic.api :refer [q db] :as d]
             [datomic.api :as d]
-            [datomic.api :as d]
-            [clojure.walk :as walk]])
+            [datomic.api :as d]])
 
 ;;;; Setup
 
 (def uri "datomic:free://localhost:4334/jursey")
+
+
+(comment
+
 
 ;; TODO: (next time I start over with the db) Rename agent to agent, because
 ;; not only agents will be taking actions.
@@ -32,6 +33,7 @@
 (d/transact conn [{:agent/handle "test"}])
 
 
+
 ;;;; Ask a question
 
 (def first-question
@@ -43,9 +45,11 @@
     :ws/content {:ws.content/question "qhtid"}
     :ws/proc {:ws.proc/state :ws.proc.state/pending}}])
 
-@(d/transact conn first-question)
+;@(d/transact conn first-question)
 
 ;;;; Play around
+
+
 
 ;; Note: I'm using (db conn) only for this interactive exploration. Functions
 ;; should only receive the result of (db conn), not conn.
@@ -62,6 +66,7 @@
      [_ :ws/proc ?p]
      [?p :ws.proc/waiting-for ?ws]]
    (db conn))
+
 
 ;; If there are no waited-for workspaces, we look for a workspace that isn't
 ;; a sub-workspace and must therefore be a root workspace. We show that one.
@@ -85,6 +90,7 @@
                           :ws.content/sub-ws]
              :ws/proc    [{:ws.proc/state [:db/ident]} :ws.proc/waiting-for]}]
           ws-id))
+
 
 ;; TODO: Find and assemble all information for the workspace to be shown.
 ;; TODO: Render the workspace.
@@ -117,6 +123,8 @@
 
 ;;;; Play around
 
+
+
 ;; Find out whether there is any workspace that needs to be shown.
 ;; Those are the ones that someone is waiting for or that belong to the root
 ;; question.
@@ -147,6 +155,8 @@
 ;; Only the most recently answered questions?
 ;; Patchwork so far has runs from root question to root answer. How would I
 ;; do this in Jursey? – I could just keep the ID of the root ws until the end.
+
+
 
 ;; TODO: Should we attach agent/agent IDs to the actions for introspection?
 ;; (Not reflection.)
@@ -187,6 +197,8 @@
 ;; those actions, (render it) and compare it with the current ws. Have to
 ;; make sure that the ws wasn't later retracted maybe.
 
+
+
 ;; First: Find all actions in history and the workspace state before.
 ;; The following gives me workspaces and actions that were taken from there
 ;; (entity IDs only). Using the ?tx and d/as-of I can find out how the
@@ -200,6 +212,8 @@
      [?tx :tx/act ?a]]
    (db conn)
    (d/log conn))
+
+;)
 
 ;; TODO: Do the whole thing again with actual pointers.
 ;; TODO: Do it another time with sub-questions.
@@ -215,7 +229,7 @@
                 :ws/content {:ws.content/question "qhtid"}
                 :ws/proc    {:ws.proc/state :ws.proc.state/pending}}]))
 
-(ask-root conn "test" "What is 51 * 5019")
+;(ask-root conn "test" "What is 51 * 5019")
 
 
 ;; TODO: Factor out a function that creates the transaction data for actions.
@@ -302,6 +316,8 @@
 (ask conn cur-ws "What is 50 * 5019?")
 
 (ask conn cur-ws "What is 50?")
+
+
 
 (wss-to-show (db conn))
 
@@ -420,6 +436,21 @@
 ;;   given answer. We can put that for :a in the :p->id map.
 ;; - Depending on the workspace they're shown in, pointers have to have
 ;;   different string representations.
+;;   → Pointer numbering is the business of the workspace?
+;;   - What about locked/unlocked state? I wanted to make copies for that?
+;;   - Maybe the Patchwork way to separate that from the pointers and the
+;;     hypertext is right.
+;;   - One could also view it as information hiding, though. We show a ws to
+;;     the user with locked pointers. If she needs more information, she
+;;     requests another version of the workspace with some of the information
+;;     uncovered.
+;;   - But how does this play with the concept of a tree of wss?
+
+;; - If I don't want to always treat reflection as an afterthought, can I make
+;;   it first class? Do I also get (immutable) edits for free then?
+;;   Because the user can visit any part of the computational forest and make
+;;   alternate histories.
+;; - The actual user interaction would be on top of that, I guess.
 
 
 (let [db (db conn)
@@ -456,3 +487,5 @@
                       [:p->id to-keep])
       to-show (apply array-map entries)]
   to-show)
+
+)
