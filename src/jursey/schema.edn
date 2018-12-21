@@ -15,47 +15,32 @@
 
 ;;;; ws
 
-{:db/ident :ws/content
+{:db/ident :ws/question
+ :db/valueType :db.type/ref  ; hypertext
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws/answer
+ :db/valueType :db.type/ref  ; hypertext
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :ws/sub-qa  ; qa
  :db/valueType :db.type/ref
  :db/isComponent true
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :ws/proc
- :db/valueType :db.type/ref
- :db/isComponent true
- :db/cardinality :db.cardinality/one}
-
-;;;; ws.content
-
-;; All refer to hypertext.
-
-{:db/ident :ws.content/question
- :db/valueType :db.type/ref
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :ws.content/answer
- :db/valueType :db.type/ref
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :ws.content/sub-ws
- :db/valueType :db.type/ref
  :db/cardinality :db.cardinality/many}
 
-;;;; ws.proc
-
-{:db/ident :ws.proc/state
- :db/valueType :db.type/ref                                 ; enum
- :db/cardinality :db.cardinality/one}
-
-{:db/ident :ws.proc/waiting-for
- :db/valueType :db.type/ref                                 ; ws
+{:db/ident :ws/waiting-for
+ :db/valueType :db.type/ref  ; ws
  :db/cardinality :db.cardinality/many}
 
-;;;; ws.state
+;;;; qa
 
-[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/showing]
-[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/pending]
-[:db/add #db/id[:db.part/user] :db/ident :ws.proc.state/retired]
+{:db/ident :qa/question
+ :db/valueType :db.type/ref  ; hypertext
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :qa/answer
+ :db/valueType :db.type/ref  ; hypertext
+ :db/cardinality :db.cardinality/one}
 
 ;;;; act
 
