@@ -28,3 +28,9 @@ Start the transactor
 cd datomic
 JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties
 ```
+
+
+References
+----------
+
+- http://blog.datomic.com/2013/06/component-entities.html
