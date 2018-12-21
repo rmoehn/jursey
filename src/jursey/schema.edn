@@ -1,7 +1,8 @@
+;; act  … action
+;; qa   … question-answer pair
 ;; ws   … workspace
-;; act  … action
 
-;;;; user
+;;;; agent
 
 {:db/ident :agent/handle
  :db/valueType :db.type/string
@@ -9,9 +10,8 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :agent/root-ws
- :db/valueType :db.type/ref                                 ;
+ :db/valueType :db.type/ref  ; ws
  :db/cardinality :db.cardinality/many}
-
 
 ;;;; ws
 
@@ -60,11 +60,11 @@
 ;;;; act
 
 {:db/ident :act/command
- :db/valueType :db.type/ref                                 ; enum
+ :db/valueType :db.type/ref  ; enum
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :act/content
- :db/valueType :db.type/ref                                 ; hypertext
+ :db/valueType :db.type/ref  ; hypertext
  :db/cardinality :db.cardinality/one}
 
 ;;;; act.command
@@ -77,21 +77,21 @@
 ;;;; tx
 
 {:db/ident :tx/ws
- :db/valueType :db.type/ref                                 ; ws
+ :db/valueType :db.type/ref  ; ws
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :tx/act
- :db/valueType :db.type/ref                                 ; act
+ :db/valueType :db.type/ref  ; act
  :db/cardinality :db.cardinality/one}
 
 ;;;; hypertext
 
 {:db/ident :hypertext/content
- :db/valueType :db.type/string                              ; with embedded pointer names
+ :db/valueType :db.type/string  ; with embedded pointer names
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :hypertext/pointer
- :db/valueType :db.type/ref                                 ; pointer
+ :db/valueType :db.type/ref  ; pointer
  :db/isComponent true
  :db/cardinality :db.cardinality/many}
 
@@ -102,9 +102,9 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/target
- :db/valueType :db.type/ref                                 ; anything (?)
+ :db/valueType :db.type/ref  ; anything (?)
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/locked?
- :db/valueType :db.type/boolean                             ; anything (?)
+ :db/valueType :db.type/boolean  ; anything (?)
  :db/cardinality :db.cardinality/one}
