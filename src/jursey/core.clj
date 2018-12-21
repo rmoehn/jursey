@@ -4,35 +4,32 @@
             [datomic.api :refer [q db] :as d]
             [datomic.api :as d]
             [datomic.api :as d]])
+;; Also uses: datomic.Util
 
 ;;;; Setup
 
-(def uri "datomic:free://localhost:4334/jursey")
+(defn set-up []
+  (let [base-uri "datomic:free://localhost:4334/"
+        db-name  "jursey"
+        db-uri   (str base-uri db-name)]
+
+    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
+      (d/delete-database db-uri))
+
+    (d/create-database db-uri)
+    (def conn (d/connect db-uri)))
+
+  (with-open [rdr (io/reader "src/jursey/schema.edn")]
+    (d/transact conn (datomic.Util/readAll rdr)))
+
+  (def test-agent "test")
+
+  (d/transact conn [{:agent/handle test-agent}]))
+
+
 
 
 (comment
-
-
-;; TODO: (next time I start over with the db) Rename agent to agent, because
-;; not only agents will be taking actions.
-(d/delete-database uri)
-
-(d/create-database uri)
-
-(def conn (d/connect uri))
-
-;; Should this be in a with-open?
-(def schema (-> "src/jursey/schema.edn"
-                io/reader
-                datomic.Util/readAll))
-(d/transact conn schema)
-
-
-;;;; Users
-
-(d/transact conn [{:agent/handle "test"}])
-
-
 
 ;;;; Ask a question
 
@@ -46,6 +43,8 @@
     :ws/proc {:ws.proc/state :ws.proc.state/pending}}])
 
 ;@(d/transact conn first-question)
+ 
+  (set-up)
 
 ;;;; Play around
 
