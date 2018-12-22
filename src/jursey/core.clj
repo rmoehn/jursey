@@ -26,36 +26,32 @@
 
   (d/transact conn [{:agent/handle test-agent}]))
 
+;;;; Core API
 
+(defn ask-root-question [conn agent question]
+  (d/transact conn
+              [{:db/id              "qhtid"
+                :hypertext/content  question}
+               {:db/id        "wsid"
+                :ws/question  "qhtid"}
+               {:db/id          [:agent/handle agent]
+                :agent/root-ws  "wsid"}]))
 
 
 (comment
 
-;;;; Ask a question
-
-(def first-question
-  [{:db/id [:agent/handle "test"]
-    :agent/root-ws "wsid"}
-   {:db/id "qhtid"
-    :hypertext/content "What is 20 * 30?"}
-   {:db/id "wsid"
-    :ws/content {:ws.content/question "qhtid"}
-    :ws/proc {:ws.proc/state :ws.proc.state/pending}}])
-
-;@(d/transact conn first-question)
- 
   (set-up)
 
+  (ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+
 ;;;; Play around
-
-
 
 ;; Note: I'm using (db conn) only for this interactive exploration. Functions
 ;; should only receive the result of (db conn), not conn.
 (q '[:find ?text
      :where
-     [?ws :ws/content ?c]
-     [?c :ws.content/question ?ht]
+     [?ws :ws/question ?ht]
      [?ht :hypertext/content ?text]]
    (db conn))
 
