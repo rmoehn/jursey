@@ -102,6 +102,19 @@
                         :agent/root-ws "wsid"}]
                       (ht->tx-data question))))
 
+(defn wss-to-show
+  "Return IDs of workspaces that are waited for, but not waiting for.
+  Ie. they should and can be worked on. A workspace can be waited for by another
+  workspace, or by an agent if it would answer one of that agent's root
+  questions."
+  [db]
+  (q '[:find [?ws ...]
+       :where
+       (or [_ :ws/waiting-for ?ws]
+           (and [_ :agent/root-ws ?ws]
+                (not [?ws :ws/answer _])))
+       (not [?ws :ws/waiting-for _])]
+     db))
 
 (comment
 
@@ -133,6 +146,8 @@
     :hypertext/content  "-54 m"}]
 
   (ask-root-question conn test-agent "What is 4 + 5?")
+
+  (wss-to-show (db conn))
 
   ;;;; Play around
 
