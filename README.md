@@ -1,3 +1,9 @@
+Limitations
+-----------
+
+- Doesn't support hypertext that starts with a link, eg. `[TS] Garp`. This isn't
+  a fundamental limitation and would take less than eight hours to fix.
+
 Use Datomic JAR with Leiningen
 ------------------------------
 
