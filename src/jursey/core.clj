@@ -1,5 +1,6 @@
 (ns jursey.core
   [:require [clojure.java.io :as io]
+            [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
             [datomic.api :refer [q db] :as d]
@@ -17,8 +18,8 @@
         db-name  "jursey"
         db-uri   (str base-uri db-name)]
 
-    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
-      (d/delete-database db-uri))
+    ;    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
+    ;(d/delete-database db-uri))
 
     (d/create-database db-uri)
     (def conn (d/connect db-uri)))
@@ -42,6 +43,8 @@
      embedded = <'['> chunks <']'>
      pointer  = <'&'> #'\\w[\\w\\d.]+'"))
 
+;; TODO: I think these components should just be left strings, because the
+;; pointer names are strings. (RM 2018-12-27)
 (defn pointer->path
   "Convert dotted pointer path to path vector for use with get-in."
   [p]
@@ -101,9 +104,23 @@
 
 (comment
 
+  "Which [1: monkey $1] went to zoo $2?"
   (def bg-data1 {:q     {:text  "Which $1 went to zoo $2?"
                          1      {:text  "monkey $1"
                                  :p->id {1 :id1.1}}
+                         :p->id {1 :id1
+                                 2 :id2}}
+                 :sq0   {:q     {:text  "…"
+                                 :p->id {}}
+                         :a     {:text  "…"
+                                 :p->id {}}
+                         :p->id {:q :idsq0.q :a :idsq0.a}}
+                 :p->id {:q   :idq
+                         :sq0 :idsq0}})
+  (def bg-data1 {:q     {:text  "Which [1: monkey $1] went to zoo $2?"
+                         1      {:p->id {1 :id1.1}
+                                 1 :locked}
+                         2      :locked
                          :p->id {1 :id1
                                  2 :id2}}
                  :sq0   {:q     {:text  "…"
@@ -206,10 +223,59 @@
    :sq {0 {:q "What is the capital city of &q.1?"
            :a "Austin"}}}
 
+  {:q "What is the capital of [1: Texas]?"
+   :sq {0 {:q "What is the capital city of [q.1: Texas]?"
+           :a "Austin"}}}
+
   {:q "What is the capital city of $1?"}
   {:q "What is the capital city of [1: Texas]?"}
 
   ;; Gas phase
+
+  ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
+  ;; syntax tree of a parsed hypertext.
+  (defn get-ht-data [db id]
+    (let [ht (d/pull db '[*] id)]
+      (into {:text (get ht :hypertext/content)
+             :id   id}
+            (map (fn [p]
+                   [(get p :pointer/name)
+                    (if (get p :pointer/locked?)
+                      :locked
+                      (get-ht-data db (get-in p [:pointer/target :db/id])))])
+                 (get ht :hypertext/pointer)))))
+
+  ;; Now I need to turn the ht-data into a string representation. For that I
+  ;; need a function that takes a map and substitutes stuff in a string
+  ;; according to that map.
+  ;; TODO: Think about whether this can produce wrong substitutions.
+  ;; (RM 2018-12-27)
+  ;; Note: This has to do as many passes as there are pointers. Turn it into a
+  ;; one-pass algorithm if necessary.
+  (defn replace-occurences [s m]
+    (reduce-kv string/replace s m))
+
+  (get-ht-data (db conn) 17592186045442)
+
+  (def ht-data (get-ht-data (db conn) 17592186045442))
+
+  (defn render-ht-data [ht-data]
+    (let [name->ht-data (apply dissoc ht-data (filter keyword? (keys ht-data)))
+          pointer->text (into {} (map (fn [[name embedded-ht-data]]
+                                        [(str \$ name)
+                                         (if (= embedded-ht-data :locked)
+                                           (str \$ name)
+                                           (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
+                                      name->ht-data))]
+      (replace-occurences (get ht-data :text) pointer->text)))
+
+  (render-ht-data ht-data)
+
+  (map (fn [id]
+         (render-ht-data (get-ht-data (db conn) id)))
+    (q '[:find [?ht ...]
+        :where [?ht :hypertext/content _]]
+      (db conn)))
 
   (defn render-ht [db id]
     (let [qdata (d/pull db
