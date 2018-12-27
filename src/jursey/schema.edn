@@ -91,5 +91,5 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/locked?
- :db/valueType :db.type/boolean  ; anything (?)
+ :db/valueType :db.type/boolean
  :db/cardinality :db.cardinality/one}

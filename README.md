@@ -1,8 +1,9 @@
 Limitations
 -----------
 
-- Doesn't support hypertext that starts with a link, eg. `[TS] Garp`. This isn't
-  a fundamental limitation and would take less than eight hours to fix.
+- There is no way to escape special symbols in hypertext. You cannot use any of
+  `[]&$` in normal text. This is not a fundamental limitation and could be
+  fixed within eight hours.
 
 Use Datomic JAR with Leiningen
 ------------------------------

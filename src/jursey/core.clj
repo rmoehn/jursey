@@ -30,67 +30,108 @@
 
   (d/transact conn [{:agent/handle test-agent}]))
 
-;;;; Hypertext → transaction map
+;;;; Hypertext string → transaction map
 
-;; TODO: Support hypertext that starts with an embedded.
-(def parse-ht (insta/parser
-                        "S        = chunks
-                         <chunks> = chunk*
-                         <chunk>  = text embedded?
-                         text     = #'[^\\[\\]]+'
-                         embedded = (<'['> chunks <']'>)"))
+;; TODO: Support escaped brackets, dollar signs, ampersands.
+(def parse-ht
+  (insta/parser
+    "S        = chunks
+     <chunks> = chunk*
+     <chunk>  = text | pointer | embedded
+     text     = #'[^\\[\\]&]+'
+     embedded = <'['> chunks <']'>
+     pointer  = <'&'> #'\\w[\\w\\d.]+'"))
 
-(defn path->id [path]
-  (str "htid" (string/join \. path)))
+(defn pointer->path
+  "Convert dotted pointer path to path vector for use with get-in."
+  [p]
+  (let [components (string/split p #"\.")]
+    (mapv (fn [c]
+            (try (Integer/parseInt c)
+                 (catch NumberFormatException _
+                   (keyword c))))
+          components)))
 
-;; Notes:
-;; - We don't rely on the keywords :text and :embedded to identify
-;;   the children, but on the fact that text and embeddeds occur in pairs.
-;; - There must be more elegant ways to implement this, but for now this quick
-;;   and dirty heap of oatmeal is good enough.
-(defn ht-tree->tx-data [path children]
-  (let [;; Separate possible trailing text.
-        [children last-child] (if (odd? (count children))
-                                [(drop-last children) (last children)]
-                                [children nil])
+(defn process-pointer [bg-data pointer]
+  (let [path (pointer->path pointer)]
+    {:repr    (str \& pointer)
+     :pointer {:pointer/name    pointer
+               :pointer/target  (get-in bg-data
+                                        (concat (butlast path) [:p->id (last path)]))
+               :pointer/locked? (nil? (get-in bg-data (conj path :text)))}}))
 
-        ;; [[[:text …] [:embedded …]] …]
-        text-embeddeds (partition 2 children)
+(declare ht-tree->tx-data)
 
-        ;; Assemble the output hypertext with $0, $1, … instead of embeddeds.
-        content        (apply str (map-indexed
-                                    (fn [i [[_ t] _]]
-                                      (str t \$ i))
-                                    text-embeddeds))
-        ;; Append the trailing text if there was any.
-        content        (if last-child
-                         (str content (second last-child))
-                         content)
+(defn tmp-htid
+  "Return a temporary :db/id for the transaction map of a piece of hypertext."
+  [loc]
+  (str "htid" (string/join \. loc)))
 
-        ;; Build component pointers that map the $0, $1, … to hypertext.
-        pointers       (map-indexed
-                         (fn [i _]
-                           {:pointer/name    (str i)
-                            :pointer/target  (path->id (conj path i))
-                            :pointer/locked? true})
-                         text-embeddeds)
+;; TODO: Document this.
+;; TODO: Find a better name for bg-data and children-data.
+(defn process-embedded [bg-data loc children]
+  (let [children-data (map-indexed (fn [i c]
+                                     (ht-tree->tx-data bg-data
+                                                       (conj loc i)
+                                                       c))
+                                   children)]
+    {:repr    (str \$ (last loc))
+     :pointer {:pointer/name    (str (last loc))
+               :pointer/target  (tmp-htid loc)
+               :pointer/locked? false}
+     :tx-data (conj
+                (apply concat (filter some? (map :tx-data children-data)))
+                {:db/id             (tmp-htid loc)
+                 :hypertext/content (apply str (map :repr children-data))
+                 :hypertext/pointer (filter some? (map :pointer children-data))})}))
 
-        ;; Build the top-level map for this subtree.
-        trx-map        {:db/id              (path->id path)
-                        :hypertext/content  content
-                        :hypertext/pointer  pointers}
+(defn ht-tree->tx-data [bg-data loc [tag & children]]
+  "
+  `loc` is the location/path of the current element in the syntax tree."
+  (case tag
+    ;; :repr is the string that will be included in the parent hypertext.
+    :text     {:repr (first children)}
+    :pointer  (process-pointer bg-data (first children))
+    :embedded (process-embedded bg-data loc children)))
 
-        ;; Recurse on the embeddeds among the children.
-        children-trx-mapss
-                       (map-indexed
-                         (fn [i [_ [_ & grandchildren]]]
-                           (ht-tree->tx-data (conj path i) grandchildren))
-                         text-embeddeds)]
-    ;; Return everything as a flat list of transaction maps.
-    (conj (apply concat children-trx-mapss) trx-map)))
+;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
+(defn ht->tx-data [bg-data ht]
+  (get (ht-tree->tx-data bg-data [] (assoc (parse-ht ht) 0 :embedded))
+       :tx-data))
 
-(defn ht->tx-data [ht]
-  (ht-tree->tx-data [] (rest (parse-ht ht))))
+(comment
+
+  (def bg-data1 {:q     {:text  "Which $1 went to zoo $2?"
+                         1      {:text  "monkey $1"
+                                 :p->id {1 :id1.1}}
+                         :p->id {1 :id1
+                                 2 :id2}}
+                 :sq0   {:q     {:text  "…"
+                                 :p->id {}}
+                         :a     {:text  "…"
+                                 :p->id {}}
+                         :p->id {:q :idsq0.q :a :idsq0.a}}
+                 :p->id {:q   :idq
+                         :sq0 :idsq0}})
+
+  (ht->tx-data
+    bg-data1
+    "How about &q.1.1 and &q.2 and &q.1?")
+
+  (ht->tx-data {}  "What is the elevation of [Mt Ontake in [Kagoshima] Prefecture]? [-54 m]")
+
+  (parse-ht "How about &q.1.1?")
+
+  )
+
+;;;; Rendering a workspace as a string
+
+(comment
+
+  ;; Example output
+  {:q "What is the elevation of [0: Mt Ontake in [0: Kagoshima] Prefecture]? [1: -54 m]"}
+
+  )
 
 ;;;; Core API
 
@@ -100,7 +141,7 @@
                         :ws/question "htid"}
                        {:db/id         [:agent/handle agent]
                         :agent/root-ws "wsid"}]
-                      (ht->tx-data question))))
+                      (ht->tx-data {} question))))
 
 (defn wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
@@ -115,6 +156,9 @@
                 (not [?ws :ws/answer _])))
        (not [?ws :ws/waiting-for _])]
      db))
+
+;; Conditions:
+;; - All unlocked pointers point at actual content, not promises.
 
 (comment
 
@@ -148,6 +192,53 @@
   (ask-root-question conn test-agent "What is 4 + 5?")
 
   (wss-to-show (db conn))
+
+  ;; Example of what I'm not going to support. One can't refer to input/path
+  ;; pointers, only to output/number pointers. This is not a limitation, because
+  ;; input pointers can only refer to something that is already in the workspace.
+  ;; So one can just refer to that instead.
+  {:q "What is the capital of $0?"
+   :sq {0 {:q "What is the capital city of &q.0?"
+           :a :locked}
+        1 {:q "What is the population of &sq.0.q.&(q.0)"}}}
+
+  {:q "What is the capital of $1?"
+   :sq {0 {:q "What is the capital city of &q.1?"
+           :a "Austin"}}}
+
+  {:q "What is the capital city of $1?"}
+  {:q "What is the capital city of [1: Texas]?"}
+
+  ;; Gas phase
+
+  (defn render-ht [db id]
+    (let [qdata (d/pull db
+                        '[{:ws/question [:db/id :hypertext/content]}]
+                        id)]
+      [{:q (get-in qdata [:ws/question :hypertext/content])}
+       {:q (get-in qdata [:ws/question :db/id])}]))
+  (render-ht (db conn) 17592186045424)
+
+  (let [db (db conn)
+        agent test-agent
+        wsid 17592186045424
+        question "What is the capital city of &q.1?"]
+    (let [
+          ;; We need to process the input hypertext.
+
+          txdata [{:db/id "qaid"
+                   :qa/question "htid"
+                   :qa/answer "promiseid"}
+                  {:db/id wsid
+                   :ws/sub-qa "qaid"}
+                  {:db/id "actid"
+                   :act/command :act.command/ask
+                   :act/content "htid"}
+                  {:db/id "datomic.tx"
+                   :tx/ws wsid
+                   :tx/act "actid"}]]))
+
+  (get (d/entity (db conn) 17592186045429) :ws/question)
 
   ;;;; Play around
 
@@ -461,7 +552,9 @@
 
 
   ;; I could also generate such data with spec.
-  (def render-data {:q     {:text  "Which [1: monkey] went to zoo $2?"
+  (def render-data {:q     {:text  "Which $1 went to zoo $2?"
+                            1 {:text "monkey $1"
+                               :p->id {1 :id1.1}}
                             :p->id {1 :id1
                                     2 :id2}}
                     :sq0   {:q     {:text  "…"
