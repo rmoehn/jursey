@@ -1,5 +1,6 @@
 (ns jursey.core
   [:require [clojure.java.io :as io]
+            [clojure.pprint :as pprint]
             [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
@@ -18,8 +19,8 @@
         db-name  "jursey"
         db-uri   (str base-uri db-name)]
 
-    ;    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
-    ;(d/delete-database db-uri))
+    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
+      (d/delete-database db-uri))
 
     (d/create-database db-uri)
     (def conn (d/connect db-uri)))
@@ -39,9 +40,9 @@
     "S        = chunks
      <chunks> = chunk*
      <chunk>  = text | pointer | embedded
-     text     = #'[^\\[\\]&]+'
+     text     = #'[^\\[\\]$]+'
      embedded = <'['> chunks <']'>
-     pointer  = <'&'> #'\\w[\\w\\d.]+'"))
+     pointer  = <'$'> #'\\w[\\w\\d.]+'"))
 
 ;; TODO: I think these components should just be left strings, because the
 ;; pointer names are strings. (RM 2018-12-27)
@@ -56,12 +57,12 @@
           components)))
 
 (defn process-pointer [bg-data pointer]
-  (let [path (pointer->path pointer)]
-    {:repr    (str \& pointer)
+  (let [path (string/split pointer #"\.")]
+    (println bg-data path)
+    {:repr    (str \$ pointer)
      :pointer {:pointer/name    pointer
-               :pointer/target  (get-in bg-data
-                                        (concat (butlast path) [:p->id (last path)]))
-               :pointer/locked? (nil? (get-in bg-data (conj path :text)))}}))
+               :pointer/target  (get-in bg-data (conj path :target))
+               :pointer/locked? (get-in bg-data (conj path :locked?))}}))
 
 (declare ht-tree->tx-data)
 
@@ -176,12 +177,25 @@
 
 ;; Conditions:
 ;; - All unlocked pointers point at actual content, not promises.
+;; - :hypertext/target is never nil.
 
 (comment
 
   (set-up)
 
   (ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+  ;; Just for testing. Later the root question and the root ws must be separate.
+  (let [capital-wsid (first (wss-to-show (db conn)))
+        pid (q '[:find ?p .
+                 :in $ ?ws
+                 :where
+                 [?ws :ws/question ?q]
+                 [?q :hypertext/pointer ?p]]
+               (db conn) capital-wsid)]
+    (d/transact conn [{:db/id pid
+                       :pointer/locked? true}]))
+
 
   ;; Example of how the transaction map for a piece of hypertext should look.
   (ask-root-question
@@ -241,7 +255,8 @@
             (map (fn [p]
                    [(get p :pointer/name)
                     (if (get p :pointer/locked?)
-                      :locked
+                      {:locked? true
+                       :target (get-in p [:pointer/target :db/id])}
                       (get-ht-data db (get-in p [:pointer/target :db/id])))])
                  (get ht :hypertext/pointer)))))
 
@@ -263,7 +278,7 @@
     (let [name->ht-data (apply dissoc ht-data (filter keyword? (keys ht-data)))
           pointer->text (into {} (map (fn [[name embedded-ht-data]]
                                         [(str \$ name)
-                                         (if (= embedded-ht-data :locked)
+                                         (if (get embedded-ht-data :locked?)
                                            (str \$ name)
                                            (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                       name->ht-data))]
@@ -276,6 +291,65 @@
     (q '[:find [?ht ...]
         :where [?ht :hypertext/content _]]
       (db conn)))
+
+  ;; Workspace rendering so far.
+  (do
+    (def rendered-wss
+      (let [db (db conn)
+
+            get-sub-qa-data
+               (fn render-sub-qa [{qaid :db/id q-htid :qa/question aid :qa/answer}]
+                 {"q" (get-ht-data db q-htid)
+                  "a" })
+
+            get-ws-data
+               (fn get-ws-data [id]
+                 (let [pull-res  (d/pull db '[*] id)
+                       q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))]
+                   {"q" q-ht-data}))
+
+            render-ws-data
+               (fn render-ws-data [ws-data]
+                 {"q" (render-ht-data (get ws-data "q"))})
+            ]
+        (map
+
+          (q '[:find [?ws ...]
+               :where [?ws :ws/question _]]
+             db))))
+    rendered-wss)
+
+  rendered-wss
+
+  ;; TODO: Add a check that all pointers in input hypertext point at things that
+  ;; exist. (RM 2018-12-28)
+  (let [conn conn
+        agent test-agent
+        question "What is the capital city of $q.1?"
+        [{wsid :db/id} _ bg-data] (last rendered-wss)
+        tx-data (concat
+                  [{:db/id wsid
+                    :ws/sub-qa "qaid"}
+                   {:db/id "qaid"
+                    :qa/question "htid"
+                    :qa/answer   "apid"}
+                   {:db/id "apid"
+                    :answer-pointer/locked? true}
+                   {:db/id       "actid"
+                    :act/command :act.command/ask
+                    :act/content "htid"}
+                   {:db/id  "datomic.tx"
+                    :tx/ws  wsid
+                    :tx/act "actid"}]
+                  (ht->tx-data bg-data question))]
+    (pprint/pprint tx-data)
+    (d/transact conn tx-data)
+    )
+
+
+  ;; Does a workspace ever show its own data?
+  (defn get-ws-data [db id]
+    )
 
   (defn render-ht [db id]
     (let [qdata (d/pull db
@@ -632,7 +706,7 @@
                             :sq0 :idsq0}})
 
 
-  ;; THAT WAS EASY! X-|
+  ;; THAT WAS SIMPLE! X-|
   (->> render-data
        (s/transform (s/walker :text) :text)
        (s/setval (s/walker #(= % :p->id)) s/NONE))

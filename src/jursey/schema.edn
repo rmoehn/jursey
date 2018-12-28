@@ -39,7 +39,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
- :db/valueType :db.type/ref  ; hypertext
+ :db/valueType :db.type/ref  ; pointer
  :db/cardinality :db.cardinality/one}
 
 ;;;; act
@@ -93,3 +93,12 @@
 {:db/ident :pointer/locked?
  :db/valueType :db.type/boolean
  :db/cardinality :db.cardinality/one}
+
+;;;; answer pointer
+
+{:db/ident :answer-pointer/locked?
+ :db/valueType :db.type/boolean}
+
+{:db/ident :answer-pointer/target
+ :db/valueType :db.type/ref  ; hypertext
+ :db/cardinality :db.cardinality/one }
