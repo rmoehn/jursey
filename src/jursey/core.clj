@@ -4,7 +4,7 @@
             [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
-            [datomic.api :refer [q db] :as d]
+            [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
             [instaparse.core :as insta]])
@@ -38,7 +38,7 @@
 
 (comment
 
-  (set-up)
+  (set-up true)
 
   )
 
@@ -142,7 +142,8 @@
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
                (get ht :hypertext/pointer)))))
 
-(defn get-sub-qa-data [{{q-htid :db/id} :qa/question
+(defn get-sub-qa-data [db
+                       {{q-htid :db/id} :qa/question
                         {apid :db/id}   :qa/answer}]
   {"q" (get-ht-data db q-htid)
    "a" (let [{locked? :pointer/locked?
@@ -158,7 +159,7 @@
          :locked
          (render-ht-data (get qa-data "a")))})
 
-(defn get-ws-data [id]
+(defn get-ws-data [db id]
   (let [pull-res  (d/pull db '[*] id)
         q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
         ws-data {"q" q-ht-data}]
@@ -199,7 +200,7 @@
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
-(defn ask[conn wsid bg-data question]
+(defn ask [conn wsid bg-data question]
   (let [tx-data (concat
                   [{:db/id     wsid
                     :ws/sub-qa "qaid"}
@@ -228,13 +229,13 @@
   (ask-root-question conn test-agent "What is the capital of [Texas]?")
 
   ;; Just for testing. Later the root question and the root ws must be separate.
-  (let [capital-wsid (first (wss-to-show (db conn)))
+  (let [capital-wsid (first (wss-to-show (d/db conn)))
         pid (q '[:find ?p .
                  :in $ ?ws
                  :where
                  [?ws :ws/question ?q]
                  [?q :hypertext/pointer ?p]]
-               (db conn) capital-wsid)]
+               (d/db conn) capital-wsid)]
     (d/transact conn [{:db/id pid
                        :pointer/locked? true}]))
 
@@ -290,7 +291,16 @@
              db))))
     rendered-wss)
 
-  (ask conn ... "What is the capital city of $q.1?")
+  (let [db (d/db conn)
+        wsid (first (wss-to-show db))
+        ws-data (get-ws-data db wsid)
+        ws-str (render-ws-data ws-data)]
+    (def wsid wsid)
+    (def ws-data ws-data)
+    [ws-data ws-str])
+
+  (ask conn wsid ws-data "What is the capital city of $q.1?")
+
   (ask conn ... "What do you think about $sq.0.a?")
 
 
