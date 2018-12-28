@@ -67,9 +67,11 @@
   (let [path (string/split pointer #"\.")]
     (println bg-data path)
     {:repr    (str \$ pointer)
-     :pointer {:pointer/name    pointer
-               :pointer/target  (get-in bg-data (conj path :target))
-               :pointer/locked? (get-in bg-data (conj path :locked?))}}))
+     :pointer (let [res {:pointer/name    pointer
+                         :pointer/locked? (get-in bg-data (conj path :locked?))}]
+                (if-let [target (get-in bg-data (conj path :target))]
+                  (assoc res :pointer/target target)
+                  res))}))
 
 (declare ht-tree->tx-data)
 
@@ -186,6 +188,9 @@
 ;; - All unlocked pointers point at actual content, not promises.
 ;; - :hypertext/target is never nil.
 
+(defn str-idx-map [f s]
+  (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
+
 (comment
 
   (set-up)
@@ -262,8 +267,11 @@
             (map (fn [p]
                    [(get p :pointer/name)
                     (if (get p :pointer/locked?)
-                      {:locked? true
-                       :target (get-in p [:pointer/target :db/id])}
+                      (let [res {:locked? true}]
+                        ;; TODO: Use assoc-when from plumbing! (RM 2018-12-28)
+                        (if-let [target (get-in p [:pointer/target :db/id])]
+                          (assoc res :target target)
+                          res))
                       (get-ht-data db (get-in p [:pointer/target :db/id])))])
                  (get ht :hypertext/pointer)))))
 
@@ -277,10 +285,6 @@
   (defn replace-occurences [s m]
     (reduce-kv string/replace s m))
 
-  (get-ht-data (db conn) 17592186045442)
-
-  (def ht-data (get-ht-data (db conn) 17592186045442))
-
   (defn render-ht-data [ht-data]
     (let [name->ht-data (apply dissoc ht-data (filter keyword? (keys ht-data)))
           pointer->text (into {} (map (fn [[name embedded-ht-data]]
@@ -290,8 +294,6 @@
                                            (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                       name->ht-data))]
       (replace-occurences (get ht-data :text) pointer->text)))
-
-  (render-ht-data ht-data)
 
   (map (fn [id]
          (render-ht-data (get-ht-data (db conn) id)))
@@ -309,8 +311,8 @@
                                      {q-htid :db/id} :qa/question
                                      {apid :db/id}   :qa/answer}]
                  {"q" (get-ht-data db q-htid)
-                  "a" (let [{locked? :answer-pointer/locked?
-                             {target :db/id} :answer-pointer/target} (d/pull db '[*] apid)]
+                  "a" (let [{locked? :pointer/locked?
+                             {target :db/id} :pointer/target} (d/pull db '[*] apid)]
                         (if locked?
                           {:locked? true}
                           (get-ht-data db target)))})
@@ -329,13 +331,15 @@
                        q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
                        ws-data {"q" q-ht-data}]
                    (if-some [sq (get pull-res :ws/sub-qa)]
-                     (assoc ws-data "sq" (map get-sub-qa-data sq))
+                     (assoc ws-data "sq" (str-idx-map get-sub-qa-data sq))
                      ws-data)))
 
+            ;; TODO: Add sq only if there is a sub-question.
             render-ws-data
                (fn render-ws-data [ws-data]
-                 {"q" (render-ht-data (get ws-data "q"))
-                  "sq" (map render-sub-qa-data (get ws-data "sq"))})
+                 {"q"  (render-ht-data (get ws-data "q"))
+                  ;; TODO: Use map-vals here. (RM 2018-12-28)
+                  "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
             ]
         (map
           #(vector % (get-ws-data %) (render-ws-data (get-ws-data %)))
@@ -361,7 +365,7 @@
                     :qa/question "htid"
                     :qa/answer   "apid"}
                    {:db/id "apid"
-                    :answer-pointer/locked? true}
+                    :pointer/locked? true}
                    {:db/id       "actid"
                     :act/command :act.command/ask
                     :act/content "htid"}
@@ -370,6 +374,7 @@
                     :tx/act "actid"}]
                   (ht->tx-data bg-data question))]
     (pprint/pprint tx-data)
+    (def bg-data bg-data)
     (d/transact conn tx-data)
     )
 
