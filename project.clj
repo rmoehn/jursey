@@ -6,5 +6,7 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [com.datomic/datomic-free "0.9.5703"]
                  [com.rpl/specter "1.1.2"]
-                 [instaparse "1.4.9"]]
+                 [instaparse "1.4.9"]
+                 [marick/suchwow "6.0.0"]
+                 [prismatic/plumbing "0.5.5"]]
   :repl-options {:init-ns jursey.core})

@@ -32,6 +32,13 @@
 
   (d/transact conn [{:agent/handle test-agent}]))
 
+
+(comment
+
+  (set-up)
+
+  )
+
 ;;;; Hypertext string → transaction map
 
 ;; TODO: Support escaped brackets, dollar signs, ampersands.
@@ -298,22 +305,40 @@
       (let [db (db conn)
 
             get-sub-qa-data
-               (fn render-sub-qa [{qaid :db/id q-htid :qa/question aid :qa/answer}]
+               (fn get-sub-qa-data [{qaid            :db/id
+                                     {q-htid :db/id} :qa/question
+                                     {apid :db/id}   :qa/answer}]
                  {"q" (get-ht-data db q-htid)
-                  "a" })
+                  "a" (let [{locked? :answer-pointer/locked?
+                             {target :db/id} :answer-pointer/target} (d/pull db '[*] apid)]
+                        (if locked?
+                          {:locked? true}
+                          (get-ht-data db target)))})
+
+            render-sub-qa-data
+               (fn render-sub-qa-data [qa-data]
+                 (println qa-data)
+                 {"q" (render-ht-data (get qa-data "q"))
+                  "a" (if (get-in qa-data ["a" :locked?])
+                        :locked
+                        (render-ht-data (get qa-data "a")))})
 
             get-ws-data
                (fn get-ws-data [id]
                  (let [pull-res  (d/pull db '[*] id)
-                       q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))]
-                   {"q" q-ht-data}))
+                       q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
+                       ws-data {"q" q-ht-data}]
+                   (if-some [sq (get pull-res :ws/sub-qa)]
+                     (assoc ws-data "sq" (map get-sub-qa-data sq))
+                     ws-data)))
 
             render-ws-data
                (fn render-ws-data [ws-data]
-                 {"q" (render-ht-data (get ws-data "q"))})
+                 {"q" (render-ht-data (get ws-data "q"))
+                  "sq" (map render-sub-qa-data (get ws-data "sq"))})
             ]
         (map
-
+          #(vector % (get-ws-data %) (render-ws-data (get-ws-data %)))
           (q '[:find [?ws ...]
                :where [?ws :ws/question _]]
              db))))
@@ -321,12 +346,14 @@
 
   rendered-wss
 
+  ;;;; :ask
   ;; TODO: Add a check that all pointers in input hypertext point at things that
   ;; exist. (RM 2018-12-28)
   (let [conn conn
         agent test-agent
-        question "What is the capital city of $q.1?"
-        [{wsid :db/id} _ bg-data] (last rendered-wss)
+        ;question "What is the capital city of $q.1?"
+        question "What do you think about $sq.0.a?"
+        [wsid bg-data] (last rendered-wss)
         tx-data (concat
                   [{:db/id wsid
                     :ws/sub-qa "qaid"}
