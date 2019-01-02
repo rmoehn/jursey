@@ -39,7 +39,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
- :db/valueType :db.type/ref  ; hypertext
+ :db/valueType :db.type/ref  ; pointer
  :db/cardinality :db.cardinality/one}
 
 ;;;; act

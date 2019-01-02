@@ -1,8 +1,10 @@
 (ns jursey.core
   [:require [clojure.java.io :as io]
+            [clojure.pprint :as pprint]
+            [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
-            [datomic.api :refer [q db] :as d]
+            [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
             [instaparse.core :as insta]])
@@ -12,53 +14,53 @@
 
 ;;;; Setup
 
-(defn set-up []
+(defn set-up [reset?]
+  (def test-agent "test")
+
   (let [base-uri "datomic:free://localhost:4334/"
         db-name  "jursey"
         db-uri   (str base-uri db-name)]
 
-    (when (some #{db-name} (d/get-database-names (str base-uri "*")))
-      (d/delete-database db-uri))
+    (if-not reset?
+      (def conn (d/connect db-uri))
 
-    (d/create-database db-uri)
-    (def conn (d/connect db-uri)))
+      (do (when (some #{db-name} (d/get-database-names (str base-uri "*")))
+            (d/delete-database db-uri))
 
-  (with-open [rdr (io/reader "src/jursey/schema.edn")]
-    (d/transact conn (datomic.Util/readAll rdr)))
+          (d/create-database db-uri)
+          (def conn (d/connect db-uri))
 
-  (def test-agent "test")
+          (with-open [rdr (io/reader "src/jursey/schema.edn")]
+            (d/transact conn (datomic.Util/readAll rdr)))
 
-  (d/transact conn [{:agent/handle test-agent}]))
+          (d/transact conn [{:agent/handle test-agent}])))))
+
+(comment
+
+  (set-up true)
+
+  )
 
 ;;;; Hypertext string → transaction map
 
-;; TODO: Support escaped brackets, dollar signs, ampersands.
+;; TODO: Support escaped brackets and dollar signs.
 (def parse-ht
   (insta/parser
     "S        = chunks
      <chunks> = chunk*
      <chunk>  = text | pointer | embedded
-     text     = #'[^\\[\\]&]+'
+     text     = #'[^\\[\\]$]+'
      embedded = <'['> chunks <']'>
-     pointer  = <'&'> #'\\w[\\w\\d.]+'"))
-
-(defn pointer->path
-  "Convert dotted pointer path to path vector for use with get-in."
-  [p]
-  (let [components (string/split p #"\.")]
-    (mapv (fn [c]
-            (try (Integer/parseInt c)
-                 (catch NumberFormatException _
-                   (keyword c))))
-          components)))
+     pointer  = <'$'> #'\\w[\\w\\d.]+'"))
 
 (defn process-pointer [bg-data pointer]
-  (let [path (pointer->path pointer)]
-    {:repr    (str \& pointer)
-     :pointer {:pointer/name    pointer
-               :pointer/target  (get-in bg-data
-                                        (concat (butlast path) [:p->id (last path)]))
-               :pointer/locked? (nil? (get-in bg-data (conj path :text)))}}))
+  (let [path (string/split pointer #"\.")]
+    {:repr    (str \$ pointer)
+     :pointer (let [res {:pointer/name    pointer
+                         :pointer/locked? (get-in bg-data (conj path :locked?))}]
+                (if-let [target (get-in bg-data (conj path :target))]
+                  (assoc res :pointer/target target)
+                  res))}))
 
 (declare ht-tree->tx-data)
 
@@ -99,39 +101,78 @@
   (get (ht-tree->tx-data bg-data [] (assoc (parse-ht ht) 0 :embedded))
        :tx-data))
 
-(comment
-
-  (def bg-data1 {:q     {:text  "Which $1 went to zoo $2?"
-                         1      {:text  "monkey $1"
-                                 :p->id {1 :id1.1}}
-                         :p->id {1 :id1
-                                 2 :id2}}
-                 :sq0   {:q     {:text  "…"
-                                 :p->id {}}
-                         :a     {:text  "…"
-                                 :p->id {}}
-                         :p->id {:q :idsq0.q :a :idsq0.a}}
-                 :p->id {:q   :idq
-                         :sq0 :idsq0}})
-
-  (ht->tx-data
-    bg-data1
-    "How about &q.1.1 and &q.2 and &q.1?")
-
-  (ht->tx-data {}  "What is the elevation of [Mt Ontake in [Kagoshima] Prefecture]? [-54 m]")
-
-  (parse-ht "How about &q.1.1?")
-
-  )
-
 ;;;; Rendering a workspace as a string
 
-(comment
+;; TODO: Think about whether this can produce wrong substitutions.
+;; (RM 2018-12-27)
+;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
+(defn replace-occurences
+  "Replace occurrences of the keys of `m` in `s` with the corresponding vals. "
+  [s m]
+  (reduce-kv string/replace s m))
 
-  ;; Example output
-  {:q "What is the elevation of [0: Mt Ontake in [0: Kagoshima] Prefecture]? [1: -54 m]"}
+(defn str-idx-map
+  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
+  Curved quotation marks substitute for straight ones."
+  [f s]
+  (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
 
-  )
+(defn render-ht-data [ht-data]
+  (let [name->ht-data (apply dissoc ht-data (filter keyword? (keys ht-data)))
+        pointer->text (into {} (map (fn [[name embedded-ht-data]]
+                                      [(str \$ name)
+                                       (if (get embedded-ht-data :locked?)
+                                         (str \$ name)
+                                         (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
+                                    name->ht-data))]
+    (replace-occurences (get ht-data :text) pointer->text)))
+
+;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
+;; syntax tree of a parsed hypertext.
+(defn get-ht-data [db id]
+  (let [ht (d/pull db '[*] id)]
+    (into {:text (get ht :hypertext/content)
+           :id   id}
+          (map (fn [p]
+                 [(get p :pointer/name)
+                  (if (get p :pointer/locked?)
+                    (let [res {:locked? true}]
+                      ;; TODO: Use assoc-when from plumbing! (RM 2018-12-28)
+                      (if-let [target (get-in p [:pointer/target :db/id])]
+                        (assoc res :target target)
+                        res))
+                    (get-ht-data db (get-in p [:pointer/target :db/id])))])
+               (get ht :hypertext/pointer)))))
+
+(defn get-sub-qa-data [db
+                       {{q-htid :db/id} :qa/question
+                        {apid :db/id}   :qa/answer}]
+  {"q" (get-ht-data db q-htid)
+   "a" (let [{locked? :pointer/locked?
+              {target :db/id} :pointer/target} (d/pull db '[*] apid)]
+         (if locked?
+           {:locked? true}
+           (get-ht-data db target)))})
+
+(defn render-sub-qa-data [qa-data]
+  {"q" (render-ht-data (get qa-data "q"))
+   "a" (if (get-in qa-data ["a" :locked?])
+         :locked
+         (render-ht-data (get qa-data "a")))})
+
+(defn get-ws-data [db id]
+  (let [pull-res  (d/pull db '[*] id)
+        q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
+        ws-data {"q" q-ht-data}]
+    (if-some [sq (get pull-res :ws/sub-qa)]
+      (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
+      ws-data)))
+
+;; TODO: Add sq only if there is a sub-question.
+(defn render-ws-data [ws-data]
+  {"q"  (render-ht-data (get ws-data "q"))
+   ;; TODO: Use map-vals here. (RM 2018-12-28)
+   "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
 
 ;;;; Core API
 
@@ -157,14 +198,60 @@
        (not [?ws :ws/waiting-for _])]
      db))
 
+;; TODO: Add a check that all pointers in input hypertext point at things that
+;; exist. (RM 2018-12-28)
+(defn ask [conn wsid bg-data question]
+  (let [tx-data (concat
+                  [{:db/id     wsid
+                    :ws/sub-qa "qaid"}
+                   {:db/id       "qaid"
+                    :qa/question "htid"
+                    :qa/answer   "apid"}
+                   {:db/id           "apid"
+                    :pointer/locked? true}
+                   {:db/id       "actid"
+                    :act/command :act.command/ask
+                    :act/content "htid"}
+                   {:db/id  "datomic.tx"
+                    :tx/ws  wsid
+                    :tx/act "actid"}]
+                  (ht->tx-data bg-data question))]
+    (d/transact conn tx-data)))
+
 ;; Conditions:
-;; - All unlocked pointers point at actual content, not promises.
+;; - (nil? :pointer/target) implies :pointer/locked?.
+
+
+(defn show-ws [db id]
+  (let [ws-data (get-ws-data db id)
+        ws-str  (render-ws-data ws-data)]
+    (def test-ws-data ws-data)
+    [ws-data ws-str]))
 
 (comment
 
-  (set-up)
+  (do
+    (ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-  (ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (def test-wsid (first (wss-to-show (d/db conn))))
+
+    ;; Just for testing. Later the root question and the root ws must be separate.
+    (let [pid (q '[:find ?p .
+                   :in $ ?ws
+                   :where
+                   [?ws :ws/question ?q]
+                   [?q :hypertext/pointer ?p]]
+                 (d/db conn) test-wsid)]
+      (d/transact conn [{:db/id           pid
+                         :pointer/locked? true}])))
+
+  (show-ws (d/db conn) test-wsid)
+
+  (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
+
+  (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+
+  ;;;; Archive
 
   ;; Example of how the transaction map for a piece of hypertext should look.
   (ask-root-question
@@ -191,56 +278,16 @@
 
   (ask-root-question conn test-agent "What is 4 + 5?")
 
-  (wss-to-show (db conn))
-
   ;; Example of what I'm not going to support. One can't refer to input/path
   ;; pointers, only to output/number pointers. This is not a limitation, because
   ;; input pointers can only refer to something that is already in the workspace.
-  ;; So one can just refer to that instead.
-  {:q "What is the capital of $0?"
-   :sq {0 {:q "What is the capital city of &q.0?"
-           :a :locked}
-        1 {:q "What is the population of &sq.0.q.&(q.0)"}}}
+  ;; So one can just refer to that directly.
+  {"q"  "What is the capital of $0?"
+   "sq" {"0" {"q" "What is the capital city of &q.0?"
+              "a" :locked}
+         "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-  {:q "What is the capital of $1?"
-   :sq {0 {:q "What is the capital city of &q.1?"
-           :a "Austin"}}}
-
-  {:q "What is the capital city of $1?"}
-  {:q "What is the capital city of [1: Texas]?"}
-
-  ;; Gas phase
-
-  (defn render-ht [db id]
-    (let [qdata (d/pull db
-                        '[{:ws/question [:db/id :hypertext/content]}]
-                        id)]
-      [{:q (get-in qdata [:ws/question :hypertext/content])}
-       {:q (get-in qdata [:ws/question :db/id])}]))
-  (render-ht (db conn) 17592186045424)
-
-  (let [db (db conn)
-        agent test-agent
-        wsid 17592186045424
-        question "What is the capital city of &q.1?"]
-    (let [
-          ;; We need to process the input hypertext.
-
-          txdata [{:db/id "qaid"
-                   :qa/question "htid"
-                   :qa/answer "promiseid"}
-                  {:db/id wsid
-                   :ws/sub-qa "qaid"}
-                  {:db/id "actid"
-                   :act/command :act.command/ask
-                   :act/content "htid"}
-                  {:db/id "datomic.tx"
-                   :tx/ws wsid
-                   :tx/act "actid"}]]))
-
-  (get (d/entity (db conn) 17592186045429) :ws/question)
-
-  ;;;; Play around
+  ;;;; Attic
 
   ;; Note: I'm using (db conn) only for this interactive exploration. Functions
   ;; should only receive the result of (db conn), not conn.
@@ -312,8 +359,6 @@
 
 
   ;;;; Play around
-
-
 
   ;; Find out whether there is any workspace that needs to be shown.
   ;; Those are the ones that someone is waiting for or that belong to the root
@@ -566,7 +611,7 @@
                             :sq0 :idsq0}})
 
 
-  ;; THAT WAS EASY! X-|
+  ;; THAT WAS SIMPLE! X-|
   (->> render-data
        (s/transform (s/walker :text) :text)
        (s/setval (s/walker #(= % :p->id)) s/NONE))
