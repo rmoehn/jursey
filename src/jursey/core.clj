@@ -35,7 +35,6 @@
 
           (d/transact conn [{:agent/handle test-agent}])))))
 
-
 (comment
 
   (set-up true)
@@ -56,7 +55,6 @@
 
 (defn process-pointer [bg-data pointer]
   (let [path (string/split pointer #"\.")]
-    (println bg-data path)
     {:repr    (str \$ pointer)
      :pointer (let [res {:pointer/name    pointer
                          :pointer/locked? (get-in bg-data (conj path :locked?))}]
@@ -107,12 +105,16 @@
 
 ;; TODO: Think about whether this can produce wrong substitutions.
 ;; (RM 2018-12-27)
-;; Note: This has to do as many passes as there are pointers. Turn it into a
-;; one-pass algorithm if necessary.
-(defn replace-occurences [s m]
+;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
+(defn replace-occurences
+  "Replace occurrences of the keys of `m` in `s` with the corresponding vals. "
+  [s m]
   (reduce-kv string/replace s m))
 
-(defn str-idx-map [f s]
+(defn str-idx-map
+  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
+  Curved quotation marks substitute for straight ones."
+  [f s]
   (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
 
 (defn render-ht-data [ht-data]
@@ -153,7 +155,6 @@
            (get-ht-data db target)))})
 
 (defn render-sub-qa-data [qa-data]
-  (println qa-data)
   {"q" (render-ht-data (get qa-data "q"))
    "a" (if (get-in qa-data ["a" :locked?])
          :locked
@@ -164,7 +165,7 @@
         q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
         ws-data {"q" q-ht-data}]
     (if-some [sq (get pull-res :ws/sub-qa)]
-      (assoc ws-data "sq" (str-idx-map get-sub-qa-data sq))
+      (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
       ws-data)))
 
 ;; TODO: Add sq only if there is a sub-question.
@@ -172,7 +173,6 @@
   {"q"  (render-ht-data (get ws-data "q"))
    ;; TODO: Use map-vals here. (RM 2018-12-28)
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
-
 
 ;;;; Core API
 
@@ -218,27 +218,40 @@
                   (ht->tx-data bg-data question))]
     (d/transact conn tx-data)))
 
-
-
 ;; Conditions:
-;; - All unlocked pointers point at actual content, not promises.
-;; - :hypertext/target is never nil.
+;; - (nil? :pointer/target) implies :pointer/locked?.
+
+
+(defn show-ws [db id]
+  (let [ws-data (get-ws-data db id)
+        ws-str  (render-ws-data ws-data)]
+    (def test-ws-data ws-data)
+    [ws-data ws-str]))
 
 (comment
 
-  (ask-root-question conn test-agent "What is the capital of [Texas]?")
+  (do
+    (ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-  ;; Just for testing. Later the root question and the root ws must be separate.
-  (let [capital-wsid (first (wss-to-show (d/db conn)))
-        pid (q '[:find ?p .
-                 :in $ ?ws
-                 :where
-                 [?ws :ws/question ?q]
-                 [?q :hypertext/pointer ?p]]
-               (d/db conn) capital-wsid)]
-    (d/transact conn [{:db/id pid
-                       :pointer/locked? true}]))
+    (def test-wsid (first (wss-to-show (d/db conn))))
 
+    ;; Just for testing. Later the root question and the root ws must be separate.
+    (let [pid (q '[:find ?p .
+                   :in $ ?ws
+                   :where
+                   [?ws :ws/question ?q]
+                   [?q :hypertext/pointer ?p]]
+                 (d/db conn) test-wsid)]
+      (d/transact conn [{:db/id           pid
+                         :pointer/locked? true}])))
+
+  (show-ws (d/db conn) test-wsid)
+
+  (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
+
+  (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+
+  ;;;; Archive
 
   ;; Example of how the transaction map for a piece of hypertext should look.
   (ask-root-question
@@ -268,43 +281,13 @@
   ;; Example of what I'm not going to support. One can't refer to input/path
   ;; pointers, only to output/number pointers. This is not a limitation, because
   ;; input pointers can only refer to something that is already in the workspace.
-  ;; So one can just refer to that instead.
+  ;; So one can just refer to that directly.
   {"q"  "What is the capital of $0?"
    "sq" {"0" {"q" "What is the capital city of &q.0?"
               "a" :locked}
          "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-  (map (fn [id]
-         (render-ht-data (get-ht-data (db conn) id)))
-    (q '[:find [?ht ...]
-        :where [?ht :hypertext/content _]]
-      (db conn)))
-
-  ;; Workspace rendering so far.
-  (do
-    (def rendered-wss
-      (let [db (db conn)]
-        (map
-          #(vector % (get-ws-data %) (render-ws-data (get-ws-data %)))
-          (q '[:find [?ws ...]
-               :where [?ws :ws/question _]]
-             db))))
-    rendered-wss)
-
-  (let [db (d/db conn)
-        wsid (first (wss-to-show db))
-        ws-data (get-ws-data db wsid)
-        ws-str (render-ws-data ws-data)]
-    (def wsid wsid)
-    (def ws-data ws-data)
-    [ws-data ws-str])
-
-  (ask conn wsid ws-data "What is the capital city of $q.1?")
-
-  (ask conn ... "What do you think about $sq.0.a?")
-
-
-  ;;;; Play around
+  ;;;; Attic
 
   ;; Note: I'm using (db conn) only for this interactive exploration. Functions
   ;; should only receive the result of (db conn), not conn.
@@ -376,8 +359,6 @@
 
 
   ;;;; Play around
-
-
 
   ;; Find out whether there is any workspace that needs to be shown.
   ;; Those are the ones that someone is waiting for or that belong to the root
