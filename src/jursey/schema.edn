@@ -39,12 +39,14 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
- :db/valueType :db.type/ref  ; pointer
+ :db/valueType :db.type/ref  ; Either ws hypertext
  :db/cardinality :db.cardinality/one}
 
-{:db/ident :qa/imp-ws
- :db/valueType :db.type/ref  ; ws
- :db/cardinality :db.cardinality/one}
+;; ✔ SKETCH
+;;;; placeholder
+;; Dang, the old problem. No entity without an attribute value.
+;; Okay, screw the placeholder. Just use a ws. It's going to be deleted anyway.
+
 ;; Remove this.
 ;; Add a placeholder entity with ref to Maybe ws. And make the answer refer to
 ;; Either placeholder hypertext.
@@ -107,27 +109,14 @@
 
 ;;;; pointer
 
-{:db/ident :pointer/type
- :db/valueType :db.type/ref
- :db/cardinality :db.cardinality/one}
-
 {:db/ident :pointer/name
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/target
- :db/valueType :db.type/ref  ; anything (?)
+ :db/valueType :db.type/ref  ; so far: Either hypertext workspace
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/locked?
  :db/valueType :db.type/boolean
  :db/cardinality :db.cardinality/one}
-
-{:db/ident :pointer/answering-ws}
-;; Remove the last two.
-
-;;;; pointer.type
-
-[:db/add #db/id[:db.part/user] :db/ident :pointer.type/hypertext]
-[:db/add #db/id[:db.part/user] :db/ident :pointer.type/answer]
-;; Remove this again.

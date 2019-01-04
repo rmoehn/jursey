@@ -1,4 +1,5 @@
 (ns jursey.core
+  [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.stacktrace :as stktr]
@@ -7,8 +8,12 @@
             [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
+            datomic-helpers
             [instaparse.core :as insta]
-            [such.imperfection :refer [-pprint-]]])
+            [such.imperfection :refer [-pprint-]]]
+  [:use [plumbing.core
+         :only [safe-get safe-get-in]
+         :rename {safe-get get safe-get-in get-in}]])
 ;; Also uses: datomic.Util
 
 ;; ht … hypertext
@@ -56,17 +61,16 @@
      embedded = <'['> chunks <']'>
      pointer  = <'$'> #'\\w[\\w\\d.]+'"))
 
-(defn pointer->path [pointer]
-  (string/split pointer #"\."))
+(defn ->path [pointer & relpath]
+  (into (string/split pointer #"\.") relpath))
 
 (defn process-pointer [bg-data pointer]
-  (let [path (pointer->path pointer)]
+  (let [path (->path pointer)]
     {:repr    (str \$ pointer)
-     :pointer (let [res {:pointer/name    pointer
-                         :pointer/locked? (get-in bg-data (conj path :locked?))}]
-                (if-let [target (get-in bg-data (conj path :target))]
-                  (assoc res :pointer/target target)
-                  res))}))
+     :pointer {:pointer/name    pointer
+               :pointer/locked? (get-in bg-data (conj path :locked?))
+               :pointer/target  (get-in bg-data (conj path :target))}}))
+;; ✔ SKETCH
 ;; Here we would have to put a :pointer if the target exists, a :placeholder if
 ;; it doesn't. Or would the :placeholder/answering-ws be in there as target?
 ;; What is the target for? When I ask a question or reply with a pointer $q.1, it
@@ -147,21 +151,19 @@
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
+;; TODO: Turn !get-in into get-in. (RM 2019-01-04)
 (defn get-ht-data [db id]
   (let [ht (d/pull db '[*] id)]
-    (into {:text (get ht :hypertext/content)
-           :id   id}
+    (into {:text    (get ht :hypertext/content)
+           :target  id}
           (map (fn [p]
                  [(get p :pointer/name)
                   (if (get p :pointer/locked?)
-                    (let [res {:locked? true}]
-                      ;; TODO: Use assoc-when from plumbing! (RM 2018-12-28)
-                      (if-let [target (get-in p [:pointer/target :db/id])]
-                        (assoc res :target target)
-                        res))
+                    {:locked? true
+                     :target  (!get-in p [:pointer/target :db/id])}
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
                (get ht :hypertext/pointer)))))
-;; Here I can also just put the target.
+;; ✔ SKETCH: Here I can also just put the target.
 ;; And I have to change :id to :target, because in a sense the hypertext is
 ;; the target of the q or sq.1.q etc, even though they aren't actual pointers
 ;; in the database. They can't be locked.
@@ -173,9 +175,10 @@
    "a" (let [{locked? :pointer/locked?
               {target :db/id} :pointer/target} (d/pull db '[*] apid)]
          (if locked?
-           {:locked? true}
+           {:locked? true
+            :target target}
            (get-ht-data db target)))})
-;; In the locked case we still put the target.
+;; ✔ SKETCH In the locked case we still put the target.
 
 (defn render-sub-qa-data [qa-data]
   {"q" (render-ht-data (get qa-data "q"))
@@ -241,7 +244,9 @@
                     :tx/act "actid"}]
                   (ht->tx-data bg-data question))]
     (d/transact conn tx-data)))
-;; Add a placeholder and make it the target of the pointer.
+;; Add a ws and make it the target of the pointer.
+;; Uh, now I have to implement the copying of the question here.
+;; I will implement a general dbht->tx-data here.
 
 
 (defn show-ws [db id]
@@ -249,6 +254,9 @@
         ws-str  (render-ws-data ws-data)]
     (def test-ws-data ws-data)
     [ws-data ws-str]))
+
+;(defn pull-cp-hypertext-data [db id])
+
 
 (comment
 
@@ -272,6 +280,55 @@
   (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+
+  ;; Note: For now I don't worry about tail recursion and things like that.
+  ;; TODO: Handle all cases of what a pointer can point to. So far it is only
+  ;; hypertext. (RM 2019-01-04)
+  ;; TODO: Find some sensible semantics/way to deal with get and friends. (RM
+  ;; 2019-01-04)
+  ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
+  ;; have control over it (RM 2019-01-04).
+  (let [db (d/db conn)
+
+        pull-cp-hypertext-data
+        (fn pull-cp-hypertext-data [db id]
+          (let [pull-res
+                (d/pull db '[*] id)
+
+                _ (pprint/pprint pull-res)
+
+                sub-ress
+                (mapv (fn [pointer-map]
+                       (-> pointer-map
+                           (dissoc :db/id)
+                           (assoc :pointer/target
+                                  (pull-cp-hypertext-data
+                                    db
+                                    (get-in pointer-map
+                                            [:pointer/target :db/id])))))
+                              (!get pull-res :hypertext/pointer []))
+                ]
+            (-> pull-res
+                (dissoc :db/id)
+                (assoc :hypertext/pointer sub-ress))))
+
+        [copied-ht-tempid tx-data]
+        (@#'datomic-helpers/translate-value (pull-cp-hypertext-data (d/db conn)
+                                                                    (get-in test-ws-data (->path "sq.0.q" :target))))
+
+        {db :db-after :as tx-result}
+        (d/with db tx-data)
+
+        copied-ht-id
+        (d/resolve-tempid db (get tx-result :tempids) copied-ht-tempid)]
+    [tx-data
+     (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db
+                                                                 copied-ht-id))
+     (d/pull db '[*] copied-ht-id)]
+
+
+
+    )
 
   ;; Assumptions:
   ;; - (nil? :pointer/target) implies :pointer/locked?.
@@ -299,15 +356,16 @@
           ;; transaction data
           ;; connection between sub-workspace and parent
           )]
-    (let [path (pointer->path pointer)
+    (let [path (->path pointer)
           pinfo (get-in wsdata path)]
       (if (and (get pinfo :locked?) (nil? (get pinfo :target)))
         (sub-ws-txdata db wsid (get-in wsdata (conj (vec (butlast path)) "q")))
         )
       ))
-  ;; Now there is always a :target. If the target is a placeholder, we have
-  ;; to make a sub-ws.
-  ;; The placeholder has to point to the sub-ws.
+  ;; Now there is always a :target. – Either a hypertext or a ws.
+
+
+
 
   (unlock conn test-wsid test-ws-data "$sq.0.a")
 
