@@ -42,6 +42,31 @@
  :db/valueType :db.type/ref  ; pointer
  :db/cardinality :db.cardinality/one}
 
+{:db/ident :qa/imp-ws
+ :db/valueType :db.type/ref  ; ws
+ :db/cardinality :db.cardinality/one}
+;; Remove this.
+;; Add a placeholder entity with ref to Maybe ws. And make the answer refer to
+;; Either placeholder hypertext.
+;; Is this right? Once the answer is given, I remove all reference to the
+;; workspace tree it resulted from?
+;; If I want to ask a reflection question like "How would the outcome have
+;; changed if we had unlocked all pointers?", can it still be answered? Ie.
+;; can I get from $sq.0.a to the computation?
+;; My reflection idea was of transforming trees. This is not strictly necessary.
+;; I just need to be able to recover the computation.
+;; What do I record in the transactions? Action, content, target workspace.
+;; If I cut the cord after replying, I only have a collection of workspaces
+;; with sub-questions and sub-answers, but no connection between them. And
+;; the transaction data doesn't tell me either. So I do have to maintain the
+;; …
+;; I could even throw away the sub-ws.
+;; The tree grows and then it gets cut down. So actions are still
+;; transformations of trees of workspaces. Only that they are not strictly
+;; accreting anymore.
+;; Then how does reflection traverse placeholders? We show a pointer to the
+;; workspace instead of the placeholder. Should be fine.
+
 ;;;; act
 
 {:db/ident :act/command
@@ -82,6 +107,10 @@
 
 ;;;; pointer
 
+{:db/ident :pointer/type
+ :db/valueType :db.type/ref
+ :db/cardinality :db.cardinality/one}
+
 {:db/ident :pointer/name
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
@@ -93,3 +122,12 @@
 {:db/ident :pointer/locked?
  :db/valueType :db.type/boolean
  :db/cardinality :db.cardinality/one}
+
+{:db/ident :pointer/answering-ws}
+;; Remove the last two.
+
+;;;; pointer.type
+
+[:db/add #db/id[:db.part/user] :db/ident :pointer.type/hypertext]
+[:db/add #db/id[:db.part/user] :db/ident :pointer.type/answer]
+;; Remove this again.

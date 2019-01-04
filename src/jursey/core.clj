@@ -7,7 +7,8 @@
             [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
-            [instaparse.core :as insta]])
+            [instaparse.core :as insta]
+            [such.imperfection :refer [-pprint-]]])
 ;; Also uses: datomic.Util
 
 ;; ht … hypertext
@@ -39,6 +40,8 @@
 
   (set-up true)
 
+  (set-up false)
+
   )
 
 ;;;; Hypertext string → transaction map
@@ -53,14 +56,28 @@
      embedded = <'['> chunks <']'>
      pointer  = <'$'> #'\\w[\\w\\d.]+'"))
 
+(defn pointer->path [pointer]
+  (string/split pointer #"\."))
+
 (defn process-pointer [bg-data pointer]
-  (let [path (string/split pointer #"\.")]
+  (let [path (pointer->path pointer)]
     {:repr    (str \$ pointer)
      :pointer (let [res {:pointer/name    pointer
                          :pointer/locked? (get-in bg-data (conj path :locked?))}]
                 (if-let [target (get-in bg-data (conj path :target))]
                   (assoc res :pointer/target target)
                   res))}))
+;; Here we would have to put a :pointer if the target exists, a :placeholder if
+;; it doesn't. Or would the :placeholder/answering-ws be in there as target?
+;; What is the target for? When I ask a question or reply with a pointer $q.1, it
+;; allows me to find out what $q.1 is pointing at, so I can include the same
+;; reference in the new hypertext.
+;;
+;; Now: We always put the target, because it always exists. It can be hypertext
+;; or a placeholder.
+;;
+;; I just saw: q, sq.0.q etc. don't have a target, they have an :id. I'd have to
+;; unify this in order to make the above function work.
 
 (declare ht-tree->tx-data)
 
@@ -126,6 +143,7 @@
                                          (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                     name->ht-data))]
     (replace-occurences (get ht-data :text) pointer->text)))
+;; Doesn't have to change.
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
@@ -143,6 +161,10 @@
                         res))
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
                (get ht :hypertext/pointer)))))
+;; Here I can also just put the target.
+;; And I have to change :id to :target, because in a sense the hypertext is
+;; the target of the q or sq.1.q etc, even though they aren't actual pointers
+;; in the database. They can't be locked.
 
 (defn get-sub-qa-data [db
                        {{q-htid :db/id} :qa/question
@@ -153,12 +175,14 @@
          (if locked?
            {:locked? true}
            (get-ht-data db target)))})
+;; In the locked case we still put the target.
 
 (defn render-sub-qa-data [qa-data]
   {"q" (render-ht-data (get qa-data "q"))
    "a" (if (get-in qa-data ["a" :locked?])
          :locked
          (render-ht-data (get qa-data "a")))})
+;; Must stay the same.
 
 (defn get-ws-data [db id]
   (let [pull-res  (d/pull db '[*] id)
@@ -217,9 +241,7 @@
                     :tx/act "actid"}]
                   (ht->tx-data bg-data question))]
     (d/transact conn tx-data)))
-
-;; Conditions:
-;; - (nil? :pointer/target) implies :pointer/locked?.
+;; Add a placeholder and make it the target of the pointer.
 
 
 (defn show-ws [db id]
@@ -250,6 +272,51 @@
   (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+
+  ;; Assumptions:
+  ;; - (nil? :pointer/target) implies :pointer/locked?.
+  ;; - Unlock can only be called if the workspace is not waiting for another.
+  ;; - A sub-workspace belongs to exactly one workspace.
+  ;; - Sub-workspaces are only created when the user attempts to unlock the
+  ;;   respective sub-question.
+  ;; - When the user replies, the answer is copied to the parent workspace and
+  ;;   the target filled.
+  ;; - From these it follows that when we want to unlock a pointer and it has
+  ;;   no target, no sub-workspace exists yet.
+  (let [db (d/db conn)
+        wsid test-wsid
+        wsdata test-ws-data
+        pointer "sq.0.a"
+
+        question->tx-data
+        (fn question->tx-data [db htid])
+
+
+        sub-ws-txdata
+        (fn sub-ws-txdata [db wsid sqdata]
+          ;; data for the question ht
+          ;; sub-workspace itself
+          ;; transaction data
+          ;; connection between sub-workspace and parent
+          )]
+    (let [path (pointer->path pointer)
+          pinfo (get-in wsdata path)]
+      (if (and (get pinfo :locked?) (nil? (get pinfo :target)))
+        (sub-ws-txdata db wsid (get-in wsdata (conj (vec (butlast path)) "q")))
+        )
+      ))
+  ;; Now there is always a :target. If the target is a placeholder, we have
+  ;; to make a sub-ws.
+  ;; The placeholder has to point to the sub-ws.
+
+  (unlock conn test-wsid test-ws-data "$sq.0.a")
+
+  ;;;; Reply – gas phase
+
+  ;; Go from the ws to the placeholder, then from the placeholder to the
+  ;; pointers that point at it. Make a copy of the answer for each
+  ;; pointer and change the pointers to pointer at their copies. Throw away
+  ;; the placeholder. And the sub-ws!
 
   ;;;; Archive
 
