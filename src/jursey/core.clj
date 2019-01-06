@@ -204,6 +204,56 @@
    ;; TODO: Use map-vals here. (RM 2018-12-28)
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
 
+;;;; Copying hypertext
+(def --Hypertext-copying)
+
+(declare pull-cp-hypertext-data)
+
+(defn pull-cp-pointer-data [db
+                            {id :db/id
+                             target :pointer/target
+                             locked :pointer/locked?
+                             :as pointer-map}]
+  ;; SKETCH Here I need to look if the :pointer/target is
+  ;; the ID of a workspace. If it is a workspace, I don't
+  ;; apply pull-cp-hypertext-data to it, but just return
+  ;; the ID. Before that I will factor this part out as a
+  ;; function.
+  ;; How do I know if it is a workspace? A workspace always has a
+  ;; question, so I can identify it by that.
+  ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
+  (let [pull-res (d/pull db '[*] (get target :db/id))]
+    (pprint/pprint pull-res)
+    (cond
+      (some? (!get pull-res :hypertext/content))
+      (-> pointer-map
+          (dissoc :db/id)
+          (assoc :pointer/target
+                 (pull-cp-hypertext-data
+                   db
+                   (get-in pointer-map
+                           ;; ↓
+                           [:pointer/target :db/id]))))
+
+      (some? (!get pull-res :ws/question))
+      (dissoc pointer-map :db/id)
+
+      :else (throw (ex-info "Don't know how to handle this pointer target."
+                            {:target pull-res})))))
+
+(defn pull-cp-hypertext-data [db id]
+  (let [pull-res
+        (d/pull db '[*] id)
+
+        ;_ (pprint/pprint pull-res)
+
+        sub-ress
+        (mapv #(pull-cp-pointer-data db %)
+              (!get pull-res :hypertext/pointer []))]
+    (-> pull-res
+        (dissoc :db/id)
+        (assoc :hypertext/pointer sub-ress))))
+
 ;;;; Core API
 (def --Core-API)
 
@@ -248,7 +298,7 @@
                     :tx/act "actid"}]
                   (ht->tx-data bg-data question))]
     (d/transact conn tx-data)))
-;; Add a ws and make it the target of the pointer.
+;; Add a ws and make it the target of the pointer with apid.
 ;; Uh, now I have to implement the copying of the question here.
 ;; I will implement a general dbht->tx-data here.
 
@@ -285,53 +335,35 @@
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
 
+
+
   ;; Note: For now I don't worry about tail recursion and things like that.
   ;; TODO: Handle all cases of what a pointer can point to. So far it is only
   ;; hypertext. (RM 2019-01-04)
-  ;; TODO: Find some sensible semantics/way to deal with get and friends. (RM
+  ;; TODO: Find some sensible semantics/way to deal with get and friends.
+  ;; – The current semantics is like Python with get = __getitem__ and !get =
+  ;; get. This is quite okay. I just have to find better names, I guess. (RM
   ;; 2019-01-04)
+
   ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
   ;; have control over it (RM 2019-01-04).
-  (let [db (d/db conn)
+  (letfn [
+          ]
+    (let [db (d/db conn)
 
-        pull-cp-hypertext-data
-        (fn pull-cp-hypertext-data [db id]
-          (let [pull-res
-                (d/pull db '[*] id)
+          [copied-ht-tempid tx-data]
+          (@#'datomic-helpers/translate-value
+            (pull-cp-hypertext-data (d/db conn)
+                                    (get-in test-ws-data (->path "sq.0.q" :target))))
 
-                _ (pprint/pprint pull-res)
+          {db :db-after :as tx-result}
+          (d/with db tx-data)
 
-                sub-ress
-                (mapv (fn [pointer-map]
-                       (-> pointer-map
-                           (dissoc :db/id)
-                           (assoc :pointer/target
-                                  (pull-cp-hypertext-data
-                                    db
-                                    (get-in pointer-map
-                                            [:pointer/target :db/id])))))
-                              (!get pull-res :hypertext/pointer []))
-                ]
-            (-> pull-res
-                (dissoc :db/id)
-                (assoc :hypertext/pointer sub-ress))))
-
-        [copied-ht-tempid tx-data]
-        (@#'datomic-helpers/translate-value (pull-cp-hypertext-data (d/db conn)
-                                                                    (get-in test-ws-data (->path "sq.0.q" :target))))
-
-        {db :db-after :as tx-result}
-        (d/with db tx-data)
-
-        copied-ht-id
-        (d/resolve-tempid db (get tx-result :tempids) copied-ht-tempid)]
-    [tx-data
-     (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db
-                                                                 copied-ht-id))
-     (d/pull db '[*] copied-ht-id)]
-
-
-
+          copied-ht-id
+             (d/resolve-tempid db (get tx-result :tempids) copied-ht-tempid)]
+      [tx-data
+       (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db copied-ht-id))
+       (d/pull db '[*] copied-ht-id)])
     )
 
   ;; Assumptions:
