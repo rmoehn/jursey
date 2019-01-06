@@ -209,12 +209,15 @@
 
 (declare pull-cp-hypertext-data)
 
+;; Note: This locks all the pointer copies, because that's what I need when I
+;; copy a hypertext to another workspace. Adapt if you need faithfully copied
+;; locked status somewhere.
 (defn pull-cp-pointer-data [db
                             {id :db/id
-                             target :pointer/target
+                             {target-id :db/id} :pointer/target
                              locked :pointer/locked?
                              :as pointer-map}]
-  ;; SKETCH Here I need to look if the :pointer/target is
+  ;; ✔ SKETCH Here I need to look if the :pointer/target is
   ;; the ID of a workspace. If it is a workspace, I don't
   ;; apply pull-cp-hypertext-data to it, but just return
   ;; the ID. Before that I will factor this part out as a
@@ -222,21 +225,20 @@
   ;; How do I know if it is a workspace? A workspace always has a
   ;; question, so I can identify it by that.
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
-  (let [pull-res (d/pull db '[*] (get target :db/id))]
+  (let [pull-res (d/pull db '[*] target-id)]
     (pprint/pprint pull-res)
     (cond
       (some? (!get pull-res :hypertext/content))
       (-> pointer-map
           (dissoc :db/id)
+          (assoc :pointer/locked? true)
           (assoc :pointer/target
-                 (pull-cp-hypertext-data
-                   db
-                   (get-in pointer-map
-                           ;; ↓
-                           [:pointer/target :db/id]))))
+                 (pull-cp-hypertext-data db target-id)))
 
       (some? (!get pull-res :ws/question))
-      (dissoc pointer-map :db/id)
+      (-> pointer-map
+          (assoc :pointer/locked? true)
+          (dissoc pointer-map :db/id))
 
       :else (throw (ex-info "Don't know how to handle this pointer target."
                             {:target pull-res})))))
@@ -253,6 +255,9 @@
     (-> pull-res
         (dissoc :db/id)
         (assoc :hypertext/pointer sub-ress))))
+
+(defn cp-hypertext-tx-data [db id]
+  (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
 
 ;;;; Core API
 (def --Core-API)
@@ -281,27 +286,51 @@
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
+;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
+;; alright.
 (defn ask [conn wsid bg-data question]
-  (let [tx-data (concat
-                  [{:db/id     wsid
-                    :ws/sub-qa "qaid"}
-                   {:db/id       "qaid"
-                    :qa/question "htid"
-                    :qa/answer   "apid"}
-                   {:db/id           "apid"
-                    :pointer/locked? true}
-                   {:db/id       "actid"
-                    :act/command :act.command/ask
-                    :act/content "htid"}
-                   {:db/id  "datomic.tx"
-                    :tx/ws  wsid
-                    :tx/act "actid"}]
-                  (ht->tx-data bg-data question))]
-    (d/transact conn tx-data)))
+  (let [db (d/db conn)
+
+        qhtdata (ht->tx-data bg-data question)
+
+        {:keys [db-after tempids]}
+        (d/with db qhtdata)
+
+        [ht-copy-tempid ht-copy-tx-data]
+        (cp-hypertext-tx-data db-after
+                              (d/resolve-tempid db-after tempids "htid"))
+
+        final-tx-data
+        (concat
+          [{:db/id     wsid
+            :ws/sub-qa "qaid"}
+
+           qhtdata
+           {:db/id       "qaid"
+            :qa/question "htid"
+            :qa/answer "apid"}
+           {:db/id "apid"
+            :pointer/locked? true
+            :pointer/target "sub-wsid"}
+
+           ht-copy-tx-data
+           {:db/id "sub-wsid"
+            :ws/question ht-copy-tempid}
+
+           {:db/id       "actid"
+            :act/command :act.command/ask
+            :act/content "htid"}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
+    (d/transact conn final-tx-data)))
+;; ✔ SKETCH Remove the answer entry and transform it with with-db.
+;; Pull the tx data for the question of the sub-ws out with
+;; cp-hypertext-tx-data.
+;; Put all together and transact.
 ;; Add a ws and make it the target of the pointer with apid.
 ;; Uh, now I have to implement the copying of the question here.
 ;; I will implement a general dbht->tx-data here.
-
 
 (defn show-ws [db id]
   (let [ws-data (get-ws-data db id)
@@ -309,8 +338,7 @@
     (def test-ws-data ws-data)
     [ws-data ws-str]))
 
-;(defn pull-cp-hypertext-data [db id])
-
+(def --Comment)
 
 (comment
 
