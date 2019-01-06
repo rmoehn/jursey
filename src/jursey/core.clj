@@ -19,6 +19,7 @@
 ;; ht … hypertext
 
 ;;;; Setup
+(def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
 (defn set-up [reset?]
   (def test-agent "test")
@@ -50,6 +51,7 @@
   )
 
 ;;;; Hypertext string → transaction map
+(def --Hypertext-parsing)
 
 ;; TODO: Support escaped brackets and dollar signs.
 (def parse-ht
@@ -123,6 +125,7 @@
        :tx-data))
 
 ;;;; Rendering a workspace as a string
+(def --Hypertext-rendering)
 
 ;; TODO: Think about whether this can produce wrong substitutions.
 ;; (RM 2018-12-27)
@@ -202,6 +205,7 @@
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
 
 ;;;; Core API
+(def --Core-API)
 
 (defn ask-root-question [conn agent question]
   (d/transact conn
