@@ -2,6 +2,7 @@
   [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
+            [clojure.set :as set]
             [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
@@ -226,7 +227,8 @@
                             {id :db/id
                              {target-id :db/id} :pointer/target
                              locked :pointer/locked?
-                             :as pointer-map}]
+                             :as pointer-map}
+                            new-name]
   ;; ✔ SKETCH Here I need to look if the :pointer/target is
   ;; the ID of a workspace. If it is a workspace, I don't
   ;; apply pull-cp-hypertext-data to it, but just return
@@ -235,38 +237,48 @@
   ;; How do I know if it is a workspace? A workspace always has a
   ;; question, so I can identify it by that.
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
-  (let [pull-res (d/pull db '[*] target-id)]
-    (cond
-      (some? (!get pull-res :hypertext/content))
-      (-> pointer-map
-          (dissoc :db/id)
-          (assoc :pointer/locked? true)
-          (assoc :pointer/target
-                 (pull-cp-hypertext-data db target-id)))
+  (let [pull-res
+        (d/pull db '[*] target-id)
 
-      (some? (!get pull-res :ws/question))
-      (-> pointer-map
-          (dissoc pointer-map :db/id)
-          (assoc :pointer/locked? true)
-          (assoc :pointer/target target-id))
+        new-target
+        (cond
+          (some? (!get pull-res :hypertext/content))
+          (pull-cp-hypertext-data db target-id)
 
-      :else (throw (ex-info "Don't know how to handle this pointer target."
-                            {:target pull-res})))))
+          (some? (!get pull-res :ws/question))
+          target-id
 
+          :else (throw (ex-info "Don't know how to handle this pointer target."
+                                {:target pull-res})))]
+    {:pointer/name new-name
+     :pointer/target new-target
+     :pointer/locked? true}))
+
+;; TODO: Change to Derek's semantics where each occurrence of the same
+;; pointer gets its own copy. Implementing that would take half an hour that
+;; I don't want to take now. (RM 2019-01-07)
 (defn pull-cp-hypertext-data [db id]
   (let [pull-res
         (d/pull db '[*] id)
 
+        old->new-pointer
+        (set/map-invert (str-idx-map #(get % :pointer/name)
+                                     (!get pull-res :hypertext/pointer)))
+
         sub-ress
-        (mapv #(pull-cp-pointer-data db %)
+        (mapv #(pull-cp-pointer-data db % (get old->new-pointer
+                                               (get % :pointer/name)))
               (!get pull-res :hypertext/pointer []))]
     (-> pull-res
         (dissoc :db/id)
-        (assoc :hypertext/pointer sub-ress))))
+        (assoc :hypertext/pointer sub-ress)
+        (assoc :hypertext/content
+               (replace-occurrences (get pull-res :hypertext/content)
+                                    old->new-pointer)))))
 
 (defn cp-hypertext-tx-data [db id]
   (@#'datomic-helpers/translate-value (-pprint- (pull-cp-hypertext-data db
-                                                               id))))
+                                                                        id))))
 
 ;;;; Core API
 (def --Core-API)
