@@ -194,7 +194,7 @@
   (let [pull-res  (d/pull db '[*] id)
         q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
         ws-data {"q" q-ht-data}]
-    (if-some [sq (get pull-res :ws/sub-qa)]
+    (if-some [sq (!get pull-res :ws/sub-qa)]
       (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
       ws-data)))
 
@@ -202,7 +202,8 @@
 (defn render-ws-data [ws-data]
   {"q"  (render-ht-data (get ws-data "q"))
    ;; TODO: Use map-vals here. (RM 2018-12-28)
-   "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
+   "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)])
+                      (!get ws-data "sq")))})
 
 ;;;; Copying hypertext
 (def --Hypertext-copying)
@@ -226,7 +227,6 @@
   ;; question, so I can identify it by that.
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
   (let [pull-res (d/pull db '[*] target-id)]
-    (pprint/pprint pull-res)
     (cond
       (some? (!get pull-res :hypertext/content))
       (-> pointer-map
@@ -237,8 +237,9 @@
 
       (some? (!get pull-res :ws/question))
       (-> pointer-map
+          (dissoc pointer-map :db/id)
           (assoc :pointer/locked? true)
-          (dissoc pointer-map :db/id))
+          (assoc :pointer/target target-id))
 
       :else (throw (ex-info "Don't know how to handle this pointer target."
                             {:target pull-res})))))
@@ -246,8 +247,6 @@
 (defn pull-cp-hypertext-data [db id]
   (let [pull-res
         (d/pull db '[*] id)
-
-        ;_ (pprint/pprint pull-res)
 
         sub-ress
         (mapv #(pull-cp-pointer-data db %)
@@ -257,7 +256,8 @@
         (assoc :hypertext/pointer sub-ress))))
 
 (defn cp-hypertext-tx-data [db id]
-  (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
+  (@#'datomic-helpers/translate-value (-pprint- (pull-cp-hypertext-data db
+                                                               id))))
 
 ;;;; Core API
 (def --Core-API)
@@ -299,22 +299,23 @@
         [ht-copy-tempid ht-copy-tx-data]
         (cp-hypertext-tx-data db-after
                               (d/resolve-tempid db-after tempids "htid"))
+        _ (pprint/pprint ht-copy-tx-data)
 
         final-tx-data
         (concat
           [{:db/id     wsid
-            :ws/sub-qa "qaid"}
+            :ws/sub-qa "qaid"}]
 
-           qhtdata
-           {:db/id       "qaid"
+          qhtdata
+          [{:db/id       "qaid"
             :qa/question "htid"
-            :qa/answer "apid"}
-           {:db/id "apid"
+            :qa/answer   "apid"}
+           {:db/id           "apid"
             :pointer/locked? true
-            :pointer/target "sub-wsid"}
+            :pointer/target  "sub-wsid"}]
 
-           ht-copy-tx-data
-           {:db/id "sub-wsid"
+          ht-copy-tx-data
+          [{:db/id       "sub-wsid"
             :ws/question ht-copy-tempid}
 
            {:db/id       "actid"
@@ -323,6 +324,7 @@
            {:db/id  "datomic.tx"
             :tx/ws  wsid
             :tx/act "actid"}])]
+    (pprint/pprint final-tx-data)
     (d/transact conn final-tx-data)))
 ;; ✔ SKETCH Remove the answer entry and transform it with with-db.
 ;; Pull the tx data for the question of the sub-ws out with
@@ -363,6 +365,7 @@
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
 
+  (wss-to-show (d/db conn))
 
 
   ;; Note: For now I don't worry about tail recursion and things like that.
@@ -381,8 +384,8 @@
 
           [copied-ht-tempid tx-data]
           (@#'datomic-helpers/translate-value
-            (pull-cp-hypertext-data (d/db conn)
-                                    (get-in test-ws-data (->path "sq.0.q" :target))))
+            ((pull-cp-hypertext-data (d/db conn)
+                                     (get-in test-ws-data (->path "sq.0.q" :target)))))
 
           {db :db-after :as tx-result}
           (d/with db tx-data)
@@ -913,5 +916,16 @@
                           [:p->id to-keep])
         to-show   (apply array-map entries)]
     to-show)
+
+  )
+
+
+(comment
+
+  (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
+    (pprint/pprint present-tempids)
+    (pprint/pprint (set (s/select (s/walker #(contains? present-tempids %))
+                    ;(constantly nil)
+                    trx-data))))
 
   )
