@@ -169,27 +169,32 @@
 (defn get-ht-data [db id]
   (let [ht (d/pull db '[*] id)]
     (into {:text    (get ht :hypertext/content)
-           :target  id}
+           :target  id
+           :locked? false}
           (map (fn [p]
                  [(get p :pointer/name)
                   (if (get p :pointer/locked?)
-                    {:locked? true
+                    {:id (get p :db/id)
+                     :locked? true
                      :target  (!get-in p [:pointer/target :db/id])}
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
-               (get ht :hypertext/pointer)))))
+               (!get ht :hypertext/pointer [])))))
 ;; ✔ SKETCH: Here I can also just put the target.
 ;; And I have to change :id to :target, because in a sense the hypertext is
 ;; the target of the q or sq.1.q etc, even though they aren't actual pointers
-;; in the database. They can't be locked.
+;; in the database. They can't be locked, but for uniformity, I put in
+;; :locked? as well.
 
 (defn get-sub-qa-data [db
                        {{q-htid :db/id} :qa/question
                         {apid :db/id}   :qa/answer}]
   {"q" (get-ht-data db q-htid)
-   "a" (let [{locked? :pointer/locked?
+   "a" (let [{pid :db/id
+              locked? :pointer/locked?
               {target :db/id} :pointer/target} (d/pull db '[*] apid)]
          (if locked?
-           {:locked? true
+           {:id pid
+            :locked? true
             :target target}
            (get-ht-data db target)))})
 ;; ✔ SKETCH In the locked case we still put the target.
