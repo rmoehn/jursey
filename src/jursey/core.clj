@@ -139,7 +139,7 @@
 ;; TODO: Think about whether this can produce wrong substitutions.
 ;; (RM 2018-12-27)
 ;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
-(defn replace-occurences
+(defn replace-occurrences
   "Replace occurrences of the keys of `m` in `s` with the corresponding vals. "
   [s m]
   (reduce-kv string/replace s m))
@@ -158,7 +158,7 @@
                                          (str \$ name)
                                          (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                     name->ht-data))]
-    (replace-occurences (get ht-data :text) pointer->text)))
+    (replace-occurrences (get ht-data :text) pointer->text)))
 ;; Doesn't have to change.
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
