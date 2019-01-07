@@ -39,8 +39,35 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
- :db/valueType :db.type/ref  ; pointer
+ :db/valueType :db.type/ref  ; Either ws hypertext
  :db/cardinality :db.cardinality/one}
+
+;; ✔ SKETCH
+;;;; placeholder
+;; Dang, the old problem. No entity without an attribute value.
+;; Okay, screw the placeholder. Just use a ws. It's going to be deleted anyway.
+
+;; Remove this.
+;; Add a placeholder entity with ref to Maybe ws. And make the answer refer to
+;; Either placeholder hypertext.
+;; Is this right? Once the answer is given, I remove all reference to the
+;; workspace tree it resulted from?
+;; If I want to ask a reflection question like "How would the outcome have
+;; changed if we had unlocked all pointers?", can it still be answered? Ie.
+;; can I get from $sq.0.a to the computation?
+;; My reflection idea was of transforming trees. This is not strictly necessary.
+;; I just need to be able to recover the computation.
+;; What do I record in the transactions? Action, content, target workspace.
+;; If I cut the cord after replying, I only have a collection of workspaces
+;; with sub-questions and sub-answers, but no connection between them. And
+;; the transaction data doesn't tell me either. So I do have to maintain the
+;; …
+;; I could even throw away the sub-ws.
+;; The tree grows and then it gets cut down. So actions are still
+;; transformations of trees of workspaces. Only that they are not strictly
+;; accreting anymore.
+;; Then how does reflection traverse placeholders? We show a pointer to the
+;; workspace instead of the placeholder. Should be fine.
 
 ;;;; act
 
@@ -49,7 +76,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :act/content
- :db/valueType :db.type/ref  ; hypertext
+ :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 
 ;;;; act.command
@@ -87,7 +114,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/target
- :db/valueType :db.type/ref  ; anything (?)
+ :db/valueType :db.type/ref  ; so far: Either hypertext workspace
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/locked?

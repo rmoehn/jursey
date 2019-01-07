@@ -1,18 +1,26 @@
 (ns jursey.core
+  [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
+            [clojure.set :as set]
             [clojure.stacktrace :as stktr]
             [clojure.string :as string]
             [com.rpl.specter :as s]
             [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
-            [instaparse.core :as insta]])
+            datomic-helpers
+            [instaparse.core :as insta]
+            [such.imperfection :refer [-pprint-]]]
+  [:use [plumbing.core
+         :only [safe-get safe-get-in]
+         :rename {safe-get get safe-get-in get-in}]])
 ;; Also uses: datomic.Util
 
 ;; ht … hypertext
 
 ;;;; Setup
+(def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
 (defn set-up [reset?]
   (def test-agent "test")
@@ -39,28 +47,42 @@
 
   (set-up true)
 
+  (set-up false)
+
   )
 
 ;;;; Hypertext string → transaction map
+(def --Hypertext-parsing)
+
+(def pointer-re #"(?xms)
+                  \$
+                  (
+                    \w+
+                    (?: [.] \w+ )*
+                  )")
 
 ;; TODO: Support escaped brackets and dollar signs.
 (def parse-ht
   (insta/parser
-    "S        = chunks
-     <chunks> = chunk*
-     <chunk>  = text | pointer | embedded
-     text     = #'[^\\[\\]$]+'
-     embedded = <'['> chunks <']'>
-     pointer  = <'$'> #'\\w[\\w\\d.]+'"))
+    (format
+      "S        = chunks
+       <chunks> = chunk*
+       <chunk>  = text | pointer | embedded
+       text     = #'[^\\[\\]$]+'
+       embedded = <'['> chunks <']'>
+       pointer  = #'%s'"
+      pointer-re)))
 
-(defn process-pointer [bg-data pointer]
-  (let [path (string/split pointer #"\.")]
-    {:repr    (str \$ pointer)
-     :pointer (let [res {:pointer/name    pointer
-                         :pointer/locked? (get-in bg-data (conj path :locked?))}]
-                (if-let [target (get-in bg-data (conj path :target))]
-                  (assoc res :pointer/target target)
-                  res))}))
+(defn ->path [pointer & relpath]
+  (into (string/split pointer #"\.") relpath))
+
+(defn process-pointer [bg-data dollar-pointer]
+  (let [pointer (apply str (rest dollar-pointer))
+        path (->path pointer)]
+    {:repr    dollar-pointer
+     :pointer {:pointer/name    pointer
+               :pointer/locked? (get-in bg-data (conj path :locked?))
+               :pointer/target  (get-in bg-data (conj path :target))}}))
 
 (declare ht-tree->tx-data)
 
@@ -102,18 +124,19 @@
        :tx-data))
 
 ;;;; Rendering a workspace as a string
+(def --Hypertext-rendering)
 
 ;; TODO: Think about whether this can produce wrong substitutions.
 ;; (RM 2018-12-27)
 ;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
-(defn replace-occurences
+(defn replace-occurrences
   "Replace occurrences of the keys of `m` in `s` with the corresponding vals. "
   [s m]
   (reduce-kv string/replace s m))
 
 (defn str-idx-map
   "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
-  Curved quotation marks substitute for straight ones."
+  Curved quotation marks substitute for straight ones in this docstring."
   [f s]
   (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
 
@@ -125,33 +148,37 @@
                                          (str \$ name)
                                          (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                     name->ht-data))]
-    (replace-occurences (get ht-data :text) pointer->text)))
+    (replace-occurrences (get ht-data :text) pointer->text)))
+;; Doesn't have to change.
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
+;; TODO: Turn !get-in into get-in. (RM 2019-01-04)
 (defn get-ht-data [db id]
   (let [ht (d/pull db '[*] id)]
-    (into {:text (get ht :hypertext/content)
-           :id   id}
+    (into {:text    (get ht :hypertext/content)
+           :target  id
+           :locked? false}
           (map (fn [p]
                  [(get p :pointer/name)
                   (if (get p :pointer/locked?)
-                    (let [res {:locked? true}]
-                      ;; TODO: Use assoc-when from plumbing! (RM 2018-12-28)
-                      (if-let [target (get-in p [:pointer/target :db/id])]
-                        (assoc res :target target)
-                        res))
+                    {:id (get p :db/id)
+                     :locked? true
+                     :target  (!get-in p [:pointer/target :db/id])}
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
-               (get ht :hypertext/pointer)))))
+               (!get ht :hypertext/pointer [])))))
 
 (defn get-sub-qa-data [db
                        {{q-htid :db/id} :qa/question
                         {apid :db/id}   :qa/answer}]
   {"q" (get-ht-data db q-htid)
-   "a" (let [{locked? :pointer/locked?
+   "a" (let [{pid :db/id
+              locked? :pointer/locked?
               {target :db/id} :pointer/target} (d/pull db '[*] apid)]
          (if locked?
-           {:locked? true}
+           {:id pid
+            :locked? true
+            :target target}
            (get-ht-data db target)))})
 
 (defn render-sub-qa-data [qa-data]
@@ -164,7 +191,7 @@
   (let [pull-res  (d/pull db '[*] id)
         q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
         ws-data {"q" q-ht-data}]
-    (if-some [sq (get pull-res :ws/sub-qa)]
+    (if-some [sq (!get pull-res :ws/sub-qa)]
       (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
       ws-data)))
 
@@ -172,9 +199,75 @@
 (defn render-ws-data [ws-data]
   {"q"  (render-ht-data (get ws-data "q"))
    ;; TODO: Use map-vals here. (RM 2018-12-28)
-   "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)]) (get ws-data "sq")))})
+   "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)])
+                      (!get ws-data "sq")))})
+
+;;;; Copying hypertext
+(def --Hypertext-copying)
+
+(declare pull-cp-hypertext-data)
+
+;; Note: This locks all the pointer copies, because that's what I need when I
+;; copy a hypertext to another workspace. Adapt if you need faithfully copied
+;; locked status somewhere.
+(defn pull-cp-pointer-data [db
+                            {{target-id :db/id} :pointer/target}
+                            new-name]
+  ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
+  (let [pull-res
+        (d/pull db '[*] target-id)
+
+        new-target
+        (cond
+          (some? (!get pull-res :hypertext/content))
+          (pull-cp-hypertext-data db target-id)
+
+          (some? (!get pull-res :ws/question))
+          target-id
+
+          :else (throw (ex-info "Don't know how to handle this pointer target."
+                                {:target pull-res})))]
+    {:pointer/name new-name
+     :pointer/target new-target
+     :pointer/locked? true}))
+
+(defn map-keys-vals [f m]
+  (into {} (map (fn [[k v]] [(f k) (f v)]) m)))
+
+;; TODO: Change to Derek's semantics where each occurrence of the same
+;; pointer gets its own copy. Implementing that would take half an hour that
+;; I don't want to take now. (RM 2019-01-07)
+;; TODO: Find some sensible semantics/way to deal with get and friends.
+;; – The current semantics is like Python with get = __getitem__ and !get =
+;; get. This is quite okay. I just have to find better names, I guess. (RM
+;; 2019-01-04)
+;; Note: For now I don't worry about tail recursion and things like that.
+(defn pull-cp-hypertext-data [db id]
+  (let [pull-res
+        (d/pull db '[*] id)
+
+        old->new-pointer
+        (into {} (map-indexed #(vector (get %2 :pointer/name) (str %1))
+                              (!get pull-res :hypertext/pointer)))
+
+        sub-ress
+        (mapv #(pull-cp-pointer-data db % (get old->new-pointer
+                                               (get % :pointer/name)))
+              (!get pull-res :hypertext/pointer []))]
+    (-> pull-res
+        (dissoc :db/id)
+        (assoc :hypertext/pointer sub-ress)
+        (assoc :hypertext/content
+               (replace-occurrences (get pull-res :hypertext/content)
+                                    (map-keys-vals #(str \$ %) old->new-pointer))))))
+
+;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
+;; have control over it (RM 2019-01-04).
+(defn cp-hypertext-tx-data [db id]
+  (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
 
 ;;;; Core API
+(def --Core-API)
 
 (defn ask-root-question [conn agent question]
   (d/transact conn
@@ -200,40 +293,92 @@
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
+;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
+;; alright.
 (defn ask [conn wsid bg-data question]
-  (let [tx-data (concat
-                  [{:db/id     wsid
-                    :ws/sub-qa "qaid"}
-                   {:db/id       "qaid"
-                    :qa/question "htid"
-                    :qa/answer   "apid"}
-                   {:db/id           "apid"
-                    :pointer/locked? true}
-                   {:db/id       "actid"
-                    :act/command :act.command/ask
-                    :act/content "htid"}
-                   {:db/id  "datomic.tx"
-                    :tx/ws  wsid
-                    :tx/act "actid"}]
-                  (ht->tx-data bg-data question))]
+  (let [db (d/db conn)
+
+        qhtdata (ht->tx-data bg-data question)
+
+        {:keys [db-after tempids]}
+        (d/with db qhtdata)
+
+        [ht-copy-tempid ht-copy-tx-data]
+        (cp-hypertext-tx-data db-after
+                              (d/resolve-tempid db-after tempids "htid"))
+
+        final-tx-data
+        (concat
+          [{:db/id     wsid
+            :ws/sub-qa "qaid"}]
+
+          qhtdata
+          [{:db/id       "qaid"
+            :qa/question "htid"
+            :qa/answer   "apid"}
+           {:db/id           "apid"
+            :pointer/locked? true
+            :pointer/target  "sub-wsid"}]
+
+          ht-copy-tx-data
+          [{:db/id       "sub-wsid"
+            :ws/question ht-copy-tempid}
+
+           {:db/id       "actid"
+            :act/command :act.command/ask
+            :act/content question}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
+    (d/transact conn final-tx-data)))
+
+(defn unlock [conn wsid wsdata pointer]
+  (let [db (d/db conn)
+        path (->path pointer :target)
+        target (d/pull db '[*] (get-in wsdata path))
+
+        what-to-do
+        (cond
+          (some? (!get target :hypertext/content))
+          {:db/id           (get-in wsdata (->path pointer :id))
+           :pointer/locked? false}
+
+          (some? (!get target :ws/question))
+          {:db/id wsid
+           :ws/waiting-for (!get target :db/id)}
+
+          :else
+          (throw (ex-info "Don't know how to handle this pointer target."
+                          {:target target})))
+
+        tx-data
+        (concat
+          [what-to-do]
+
+          [{:db/id       "actid"
+            :act/command :act.command/unlock
+            :act/content pointer}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
     (d/transact conn tx-data)))
 
-;; Conditions:
-;; - (nil? :pointer/target) implies :pointer/locked?.
-
-
-(defn show-ws [db id]
-  (let [ws-data (get-ws-data db id)
+(defn show-ws [db]
+  (let [wsid (first (wss-to-show db))
+        ws-data (get-ws-data db wsid)
         ws-str  (render-ws-data ws-data)]
+    (def test-wsid wsid)
     (def test-ws-data ws-data)
     [ws-data ws-str]))
+
+(def --Comment)
 
 (comment
 
   (do
     (ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-    (def test-wsid (first (wss-to-show (d/db conn))))
+    (show-ws (d/db conn))
 
     ;; Just for testing. Later the root question and the root ws must be separate.
     (let [pid (q '[:find ?p .
@@ -245,11 +390,29 @@
       (d/transact conn [{:db/id           pid
                          :pointer/locked? true}])))
 
-  (show-ws (d/db conn) test-wsid)
+  (show-ws (d/db conn))
+
+  ;; Call show-ws between the following.
 
   (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+
+  (unlock conn test-wsid test-ws-data "sq.0.a")
+
+  (unlock conn test-wsid test-ws-data "q.0")
+
+  ;; If you've already unlocked sq.0.a, you have to reset before this one,
+  ;; because there is no reply yet.
+  (unlock conn test-wsid test-ws-data "sq.0.a")
+
+
+  ;;;; Reply – gas phase
+
+  ;; Go from the ws to the placeholder, then from the placeholder to the
+  ;; pointers that point at it. Make a copy of the answer for each
+  ;; pointer and change the pointers to pointer at their copies. Throw away
+  ;; the placeholder. And the sub-ws!
 
   ;;;; Archive
 
@@ -724,5 +887,19 @@
                           [:p->id to-keep])
         to-show   (apply array-map entries)]
     to-show)
+
+  )
+
+
+;; Sometimes I make the mistake to refer to a tempid that is not defined
+;; anywhere in the transaction. Datomic's error message is uninformative,
+;; so this can help to find what I forgot or misspelled.
+(comment
+
+  (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
+    (pprint/pprint present-tempids)
+    (pprint/pprint (set (s/select (s/walker #(contains? present-tempids %))
+                    ;(constantly nil)
+                    trx-data))))
 
   )
