@@ -76,9 +76,10 @@
 (defn ->path [pointer & relpath]
   (into (string/split pointer #"\.") relpath))
 
-(defn process-pointer [bg-data pointer]
-  (let [path (->path (apply str (rest pointer)))]
-    {:repr    pointer
+(defn process-pointer [bg-data dollar-pointer]
+  (let [pointer (apply str (rest dollar-pointer))
+        path (->path pointer)]
+    {:repr    dollar-pointer
      :pointer {:pointer/name    pointer
                :pointer/locked? (get-in bg-data (conj path :locked?))
                :pointer/target  (get-in bg-data (conj path :target))}}))
@@ -254,6 +255,9 @@
      :pointer/target new-target
      :pointer/locked? true}))
 
+(defn map-kv [f m]
+  (into {} (map (fn [[k v]] [(f k) (f v)]) m)))
+
 ;; TODO: Change to Derek's semantics where each occurrence of the same
 ;; pointer gets its own copy. Implementing that would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
@@ -262,8 +266,8 @@
         (d/pull db '[*] id)
 
         old->new-pointer
-        (set/map-invert (str-idx-map #(get % :pointer/name)
-                                     (!get pull-res :hypertext/pointer)))
+        (into {} (map-indexed #(vector (get %2 :pointer/name) (str %1))
+                              (!get pull-res :hypertext/pointer)))
 
         sub-ress
         (mapv #(pull-cp-pointer-data db % (get old->new-pointer
@@ -274,7 +278,7 @@
         (assoc :hypertext/pointer sub-ress)
         (assoc :hypertext/content
                (replace-occurrences (get pull-res :hypertext/content)
-                                    old->new-pointer)))))
+                                    (map-kv #(str \$ %) old->new-pointer))))))
 
 (defn cp-hypertext-tx-data [db id]
   (@#'datomic-helpers/translate-value (-pprint- (pull-cp-hypertext-data db
