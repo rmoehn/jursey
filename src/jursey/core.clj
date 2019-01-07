@@ -286,8 +286,7 @@
                                     (map-kv #(str \$ %) old->new-pointer))))))
 
 (defn cp-hypertext-tx-data [db id]
-  (@#'datomic-helpers/translate-value (-pprint- (pull-cp-hypertext-data db
-                                                                        id))))
+  (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
 
 ;;;; Core API
 (def --Core-API)
@@ -329,7 +328,6 @@
         [ht-copy-tempid ht-copy-tx-data]
         (cp-hypertext-tx-data db-after
                               (d/resolve-tempid db-after tempids "htid"))
-        _ (pprint/pprint ht-copy-tx-data)
 
         final-tx-data
         (concat
@@ -354,7 +352,6 @@
            {:db/id  "datomic.tx"
             :tx/ws  wsid
             :tx/act "actid"}])]
-    (pprint/pprint final-tx-data)
     (d/transact conn final-tx-data)))
 ;; ✔ SKETCH Remove the answer entry and transform it with with-db.
 ;; Pull the tx data for the question of the sub-ws out with
