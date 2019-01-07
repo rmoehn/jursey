@@ -76,7 +76,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :act/content
- :db/valueType :db.type/ref  ; hypertext
+ :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 
 ;;;; act.command

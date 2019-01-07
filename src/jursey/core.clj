@@ -348,7 +348,7 @@
 
            {:db/id       "actid"
             :act/command :act.command/ask
-            :act/content "htid"}
+            :act/content question}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
             :tx/act "actid"}])]
