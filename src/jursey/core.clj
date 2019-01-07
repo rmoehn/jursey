@@ -959,6 +959,9 @@
   )
 
 
+;; Sometimes I make the mistake to refer to a tempid that is not defined
+;; anywhere in the transaction. Datomic's error message is uninformative,
+;; so this can help to find what I forgot or misspelled.
 (comment
 
   (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
