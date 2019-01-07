@@ -361,9 +361,42 @@
 ;; Uh, now I have to implement the copying of the question here.
 ;; I will implement a general dbht->tx-data here.
 
-(defn show-ws [db id]
-  (let [ws-data (get-ws-data db id)
+(defn unlock [conn wsid wsdata pointer]
+  (let [db (d/db conn)
+        path (->path pointer :target)
+        target (d/pull db '[*] (get-in wsdata path))
+
+        what-to-do
+        (cond
+          (some? (!get target :hypertext/content))
+          {:db/id           (get-in wsdata (->path pointer :id))
+           :pointer/locked? false}
+
+          (some? (!get target :ws/question))
+          {:db/id wsid
+           :ws/waiting-for (!get target :db/id)}
+
+          :else
+          (throw (ex-info "Don't know how to handle this pointer target."
+                          {:target target})))
+
+        tx-data
+        (concat
+          [what-to-do]
+
+          [{:db/id       "actid"
+            :act/command :act.command/unlock
+            :act/content pointer}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
+    (d/transact conn tx-data)))
+
+(defn show-ws [db]
+  (let [wsid (first (wss-to-show db))
+        ws-data (get-ws-data db wsid)
         ws-str  (render-ws-data ws-data)]
+    (def test-wsid wsid)
     (def test-ws-data ws-data)
     [ws-data ws-str]))
 
@@ -374,7 +407,7 @@
   (do
     (ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-    (def test-wsid (first (wss-to-show (d/db conn))))
+    (show-ws (d/db conn))
 
     ;; Just for testing. Later the root question and the root ws must be separate.
     (let [pid (q '[:find ?p .
@@ -386,14 +419,21 @@
       (d/transact conn [{:db/id           pid
                          :pointer/locked? true}])))
 
-  (show-ws (d/db conn) test-wsid)
+  (show-ws (d/db conn))
+
+  ;; Call show-ws between the following.
 
   (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
 
   (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
 
-  (wss-to-show (d/db conn))
+  (unlock conn test-wsid test-ws-data "sq.0.a")
 
+  (unlock conn test-wsid test-ws-data "q.0")
+
+  ;; If you've already unlocked sq.0.a, you have to reset before this one,
+  ;; because there is no reply yet.
+  (unlock conn test-wsid test-ws-data "sq.0.a")
 
   ;; Note: For now I don't worry about tail recursion and things like that.
   ;; TODO: Handle all cases of what a pointer can point to. So far it is only
@@ -424,56 +464,6 @@
        (d/pull db '[*] copied-ht-id)])
     )
 
-  ;; Assumptions:
-  ;; - (nil? :pointer/target) implies :pointer/locked?.
-  ;; - Unlock can only be called if the workspace is not waiting for another.
-  ;; - A sub-workspace belongs to exactly one workspace.
-  ;; - Sub-workspaces are only created when the user attempts to unlock the
-  ;;   respective sub-question.
-  ;; - When the user replies, the answer is copied to the parent workspace and
-  ;;   the target filled.
-  ;; - From these it follows that when we want to unlock a pointer and it has
-  ;;   no target, no sub-workspace exists yet.
-  (let [db (d/db conn)
-        wsid test-wsid
-        wsdata test-ws-data
-        ;pointer "sq.0.a"
-        pointer "q.0"
-
-        path (->path pointer :target)
-        target (d/pull db '[*] (get-in wsdata path))
-
-        what-to-do
-        (cond
-          (some? (!get target :hypertext/content))
-          {:db/id           (get-in wsdata (->path pointer :id))
-           :pointer/locked? false}
-
-          (some? (!get target :ws/question))
-          {:db/id wsid
-           :ws/waiting-for (!get target :db/id)}
-
-          :else
-          (throw (ex-info "Don't know how to handle this pointer target."
-                          {:target target})))
-
-        tx-data
-        (concat
-          [what-to-do]
-
-          [{:db/id       "actid"
-            :act/command :act.command/unlock
-            :act/content pointer}
-           {:db/id  "datomic.tx"
-            :tx/ws  wsid
-            :tx/act "actid"}])]
-    (d/transact conn tx-data))
-  ;; Now there is always a :target. – Either a hypertext or a ws.
-
-
-
-
-  (unlock conn test-wsid test-ws-data "$sq.0.a")
 
   ;;;; Reply – gas phase
 
