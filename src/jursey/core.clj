@@ -83,18 +83,6 @@
      :pointer {:pointer/name    pointer
                :pointer/locked? (get-in bg-data (conj path :locked?))
                :pointer/target  (get-in bg-data (conj path :target))}}))
-;; ✔ SKETCH
-;; Here we would have to put a :pointer if the target exists, a :placeholder if
-;; it doesn't. Or would the :placeholder/answering-ws be in there as target?
-;; What is the target for? When I ask a question or reply with a pointer $q.1, it
-;; allows me to find out what $q.1 is pointing at, so I can include the same
-;; reference in the new hypertext.
-;;
-;; Now: We always put the target, because it always exists. It can be hypertext
-;; or a placeholder.
-;;
-;; I just saw: q, sq.0.q etc. don't have a target, they have an :id. I'd have to
-;; unify this in order to make the above function work.
 
 (declare ht-tree->tx-data)
 
@@ -148,7 +136,7 @@
 
 (defn str-idx-map
   "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
-  Curved quotation marks substitute for straight ones."
+  Curved quotation marks substitute for straight ones in this docstring."
   [f s]
   (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
 
@@ -179,11 +167,6 @@
                      :target  (!get-in p [:pointer/target :db/id])}
                     (get-ht-data db (get-in p [:pointer/target :db/id])))])
                (!get ht :hypertext/pointer [])))))
-;; ✔ SKETCH: Here I can also just put the target.
-;; And I have to change :id to :target, because in a sense the hypertext is
-;; the target of the q or sq.1.q etc, even though they aren't actual pointers
-;; in the database. They can't be locked, but for uniformity, I put in
-;; :locked? as well.
 
 (defn get-sub-qa-data [db
                        {{q-htid :db/id} :qa/question
@@ -197,14 +180,12 @@
             :locked? true
             :target target}
            (get-ht-data db target)))})
-;; ✔ SKETCH In the locked case we still put the target.
 
 (defn render-sub-qa-data [qa-data]
   {"q" (render-ht-data (get qa-data "q"))
    "a" (if (get-in qa-data ["a" :locked?])
          :locked
          (render-ht-data (get qa-data "a")))})
-;; Must stay the same.
 
 (defn get-ws-data [db id]
   (let [pull-res  (d/pull db '[*] id)
@@ -230,18 +211,8 @@
 ;; copy a hypertext to another workspace. Adapt if you need faithfully copied
 ;; locked status somewhere.
 (defn pull-cp-pointer-data [db
-                            {id :db/id
-                             {target-id :db/id} :pointer/target
-                             locked :pointer/locked?
-                             :as pointer-map}
+                            {{target-id :db/id} :pointer/target}
                             new-name]
-  ;; ✔ SKETCH Here I need to look if the :pointer/target is
-  ;; the ID of a workspace. If it is a workspace, I don't
-  ;; apply pull-cp-hypertext-data to it, but just return
-  ;; the ID. Before that I will factor this part out as a
-  ;; function.
-  ;; How do I know if it is a workspace? A workspace always has a
-  ;; question, so I can identify it by that.
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
   (let [pull-res
         (d/pull db '[*] target-id)
@@ -260,12 +231,17 @@
      :pointer/target new-target
      :pointer/locked? true}))
 
-(defn map-kv [f m]
+(defn map-keys-vals [f m]
   (into {} (map (fn [[k v]] [(f k) (f v)]) m)))
 
 ;; TODO: Change to Derek's semantics where each occurrence of the same
 ;; pointer gets its own copy. Implementing that would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
+;; TODO: Find some sensible semantics/way to deal with get and friends.
+;; – The current semantics is like Python with get = __getitem__ and !get =
+;; get. This is quite okay. I just have to find better names, I guess. (RM
+;; 2019-01-04)
+;; Note: For now I don't worry about tail recursion and things like that.
 (defn pull-cp-hypertext-data [db id]
   (let [pull-res
         (d/pull db '[*] id)
@@ -283,8 +259,10 @@
         (assoc :hypertext/pointer sub-ress)
         (assoc :hypertext/content
                (replace-occurrences (get pull-res :hypertext/content)
-                                    (map-kv #(str \$ %) old->new-pointer))))))
+                                    (map-keys-vals #(str \$ %) old->new-pointer))))))
 
+;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
+;; have control over it (RM 2019-01-04).
 (defn cp-hypertext-tx-data [db id]
   (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
 
@@ -353,13 +331,6 @@
             :tx/ws  wsid
             :tx/act "actid"}])]
     (d/transact conn final-tx-data)))
-;; ✔ SKETCH Remove the answer entry and transform it with with-db.
-;; Pull the tx data for the question of the sub-ws out with
-;; cp-hypertext-tx-data.
-;; Put all together and transact.
-;; Add a ws and make it the target of the pointer with apid.
-;; Uh, now I have to implement the copying of the question here.
-;; I will implement a general dbht->tx-data here.
 
 (defn unlock [conn wsid wsdata pointer]
   (let [db (d/db conn)
@@ -434,35 +405,6 @@
   ;; If you've already unlocked sq.0.a, you have to reset before this one,
   ;; because there is no reply yet.
   (unlock conn test-wsid test-ws-data "sq.0.a")
-
-  ;; Note: For now I don't worry about tail recursion and things like that.
-  ;; TODO: Handle all cases of what a pointer can point to. So far it is only
-  ;; hypertext. (RM 2019-01-04)
-  ;; TODO: Find some sensible semantics/way to deal with get and friends.
-  ;; – The current semantics is like Python with get = __getitem__ and !get =
-  ;; get. This is quite okay. I just have to find better names, I guess. (RM
-  ;; 2019-01-04)
-
-  ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
-  ;; have control over it (RM 2019-01-04).
-  (letfn [
-          ]
-    (let [db (d/db conn)
-
-          [copied-ht-tempid tx-data]
-          (@#'datomic-helpers/translate-value
-            ((pull-cp-hypertext-data (d/db conn)
-                                     (get-in test-ws-data (->path "sq.0.q" :target)))))
-
-          {db :db-after :as tx-result}
-          (d/with db tx-data)
-
-          copied-ht-id
-             (d/resolve-tempid db (get tx-result :tempids) copied-ht-tempid)]
-      [tx-data
-       (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db copied-ht-id))
-       (d/pull db '[*] copied-ht-id)])
-    )
 
 
   ;;;; Reply – gas phase
