@@ -53,22 +53,31 @@
 ;;;; Hypertext string → transaction map
 (def --Hypertext-parsing)
 
+(def pointer-re #"(?xms)
+                  \$
+                  (
+                    \w+
+                    (?: [.] \w+ )*
+                  )")
+
 ;; TODO: Support escaped brackets and dollar signs.
 (def parse-ht
   (insta/parser
-    "S        = chunks
-     <chunks> = chunk*
-     <chunk>  = text | pointer | embedded
-     text     = #'[^\\[\\]$]+'
-     embedded = <'['> chunks <']'>
-     pointer  = <'$'> #'\\w[\\w\\d.]+'"))
+    (format
+      "S        = chunks
+       <chunks> = chunk*
+       <chunk>  = text | pointer | embedded
+       text     = #'[^\\[\\]$]+'
+       embedded = <'['> chunks <']'>
+       pointer  = #'%s'"
+      pointer-re)))
 
 (defn ->path [pointer & relpath]
   (into (string/split pointer #"\.") relpath))
 
 (defn process-pointer [bg-data pointer]
-  (let [path (->path pointer)]
-    {:repr    (str \$ pointer)
+  (let [path (->path (apply str (rest pointer)))]
+    {:repr    pointer
      :pointer {:pointer/name    pointer
                :pointer/locked? (get-in bg-data (conj path :locked?))
                :pointer/target  (get-in bg-data (conj path :target))}}))
