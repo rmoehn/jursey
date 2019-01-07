@@ -437,25 +437,37 @@
   (let [db (d/db conn)
         wsid test-wsid
         wsdata test-ws-data
-        pointer "sq.0.a"
+        ;pointer "sq.0.a"
+        pointer "q.0"
 
-        question->tx-data
-        (fn question->tx-data [db htid])
+        path (->path pointer :target)
+        target (d/pull db '[*] (get-in wsdata path))
 
+        what-to-do
+        (cond
+          (some? (!get target :hypertext/content))
+          {:db/id           (get-in wsdata (->path pointer :id))
+           :pointer/locked? false}
 
-        sub-ws-txdata
-        (fn sub-ws-txdata [db wsid sqdata]
-          ;; data for the question ht
-          ;; sub-workspace itself
-          ;; transaction data
-          ;; connection between sub-workspace and parent
-          )]
-    (let [path (->path pointer)
-          pinfo (get-in wsdata path)]
-      (if (and (get pinfo :locked?) (nil? (get pinfo :target)))
-        (sub-ws-txdata db wsid (get-in wsdata (conj (vec (butlast path)) "q")))
-        )
-      ))
+          (some? (!get target :ws/question))
+          {:db/id wsid
+           :ws/waiting-for (!get target :db/id)}
+
+          :else
+          (throw (ex-info "Don't know how to handle this pointer target."
+                          {:target target})))
+
+        tx-data
+        (concat
+          [what-to-do]
+
+          [{:db/id       "actid"
+            :act/command :act.command/unlock
+            :act/content pointer}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
+    (d/transact conn tx-data))
   ;; Now there is always a :target. – Either a hypertext or a ws.
 
 
