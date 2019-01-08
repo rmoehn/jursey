@@ -421,8 +421,17 @@
 
   ;; If you've already unlocked sq.0.a, you have to reset before this one,
   ;; because there is no reply yet.
-  (unlock conn test-wsid test-ws-data "sq.0.a")
+  (unlock conn test-wsid test-ws-data "sq.1.a")
 
+  (show-ws (d/db conn))
+
+  (unlock conn test-wsid test-ws-data "q.0")
+
+  (show-ws (d/db conn))
+
+  ;; Reply "It's a nice city. Once I went to [Clojure/conj] there."
+
+  (unlock conn test-wsid test-ws-data "sq.1.a.0")
 
   ;;;; Reply – gas phase
 
