@@ -17,10 +17,12 @@
 
 {:db/ident :ws/question
  :db/valueType :db.type/ref  ; hypertext
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :ws/answer
  :db/valueType :db.type/ref  ; hypertext
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :ws/sub-qa  ; qa
@@ -36,10 +38,12 @@
 
 {:db/ident :qa/question
  :db/valueType :db.type/ref  ; hypertext
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
  :db/valueType :db.type/ref  ; Either ws hypertext
+ :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
 ;;;; act
