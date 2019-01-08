@@ -982,8 +982,8 @@
 
   (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
     (pprint/pprint present-tempids)
-    (pprint/pprint (set (s/select (s/walker #(contains? present-tempids %))
-                    ;(constantly nil)
-                    trx-data))))
+    (pprint/pprint (set (s/transform (s/walker #(contains? present-tempids %))
+                                     (constantly nil)
+                                     trx-data))))
 
   )
