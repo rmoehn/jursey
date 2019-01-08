@@ -270,7 +270,7 @@
 ;;;; Core API
 (def --Core-API)
 
-;; MAYBE TODO: Add a check before executing a command that the target
+;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
 
 (defn ask-root-question [conn agent question]
@@ -336,37 +336,31 @@
             :tx/act "actid"}])]
     (d/transact conn final-tx-data)))
 
+;; TODO: Check that the pointer is actually locked.
 (defn unlock [conn wsid wsdata pointer]
   (let [db (d/db conn)
         path (->path pointer :target)
         target (d/pull db '[*] (get-in wsdata path))
 
-        what-to-do
-        (cond
-          (some? (!get target :hypertext/content))
-          [{:db/id           (get-in wsdata (->path pointer :id))
-            :pointer/locked? false}]
-
-          (some? (!get target :ws/question))
+        set-waiting-data
+        (if (!get target :ws/question) ; Must be a pointer to an ungiven answer.
           [{:db/id          wsid
-            :ws/waiting-for (!get target :db/id)}
-           {:db/id           (get-in wsdata (->path pointer :id))
-            ;; Note: I can already set the pointer to unlocked, because this
-            ;; workspace won't be rendered again until the waiting-for is
-            ;; cleared. At that point the target will be renderable. This way I
-            ;; don't have to find all the pointers with pending unlock after the
-            ;; reply is given.
-            :pointer/locked? false}]
-
-          :else
-          (throw (ex-info "Don't know how to handle this pointer target."
-                          {:target target})))
+            :ws/waiting-for (!get target :db/id)}]
+          [])
 
         tx-data
         (concat
-          what-to-do
+          set-waiting-data
 
-          [{:db/id       "actid"
+          ;; Note: I can set the pointer to unlocked even if it's pointing to an
+          ;; ungiven answer, because this workspace won't be rendered again
+          ;; until the waiting-for is cleared. At that point the target will be
+          ;; renderable. This way I don't have to find all the pointers with
+          ;; pending unlock after the reply is given.
+          [{:db/id           (get-in wsdata (->path pointer :id))
+            :pointer/locked? false}
+
+           {:db/id       "actid"
             :act/command :act.command/unlock
             :act/content pointer}
            {:db/id  "datomic.tx"
@@ -375,14 +369,14 @@
     (d/transact conn tx-data)))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
-;; in which it happens. – Because we don't need it anymore. Nobody will
-;; look at it. Even reflection will only look at it in an earlier version
-;; of the database. (Not sure about this.) But :pointer/target can refer to a
-;; workspace, so :pointer/target cannot be a component attribute, so we'd
-;; have to manually traverse the tree rooted in the workspace and retract
-;; all hypertexts. This would take at least an hour to implement.
-;; Retracting finished workspaces is not crucial, so don't do it for now.
-;; Do it later. (RM 2019-01-08)
+;; in which it happens. Because we don't need it anymore. Nobody will look at
+;; it. Even reflection will only look at it in an earlier version of the
+;; database. (Not sure about this.) But :pointer/target can refer to a
+;; workspace, so :pointer/target cannot be a component attribute, so we'd have
+;; to manually traverse the tree rooted in the workspace and retract all
+;; hypertexts. This would take at least an hour to implement. Retracting
+;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
+;; 2019-01-08)
 (defn reply [conn wsid wsdata answer]
     (let [db (d/db conn)
           ahtdata (ht->tx-data wsdata answer)
