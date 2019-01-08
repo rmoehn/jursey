@@ -374,6 +374,67 @@
             :tx/act "actid"}])]
     (d/transact conn tx-data)))
 
+;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
+;; in which it happens. – Because we don't need it anymore. Nobody will
+;; look at it. Even reflection will only look at it in an earlier version
+;; of the database. (Not sure about this.) But :pointer/target can refer to a
+;; workspace, so :pointer/target cannot be a component attribute, so we'd
+;; have to manually traverse the tree rooted in the workspace and retract
+;; all hypertexts. This would take at least an hour to implement.
+;; Retracting finished workspaces is not crucial, so don't do it for now.
+;; Do it later. (RM 2019-01-08)
+(defn reply [conn wsid wsdata answer]
+    (let [db (d/db conn)
+          ahtdata (ht->tx-data wsdata answer)
+
+          {:keys [db-after tempids]} (d/with db ahtdata)
+          aht-tempid (d/resolve-tempid db-after tempids "htid")
+
+          targeting-pids
+          (d/q '[:find [?p ...]
+                 :in $ ?wsid
+                 :where
+                 [?p :pointer/target ?wsid]]
+               db wsid)
+
+          aht-copy-data
+          (mapcat (fn [pid]
+                    (let [[aht-copy-tempid aht-copy-tx-data]
+                          (cp-hypertext-tx-data db-after aht-tempid)]
+                      (conj
+                        aht-copy-tx-data
+                        {:db/id          pid
+                         :pointer/target aht-copy-tempid})))
+                  targeting-pids)
+
+          ;; TODO: Make sure that if it's waiting for multiple wss, only the
+          ;; current one is removed. I'm not sure about the semantics of
+          ;; retract. (RM 2019-01-08)
+          unwait-data
+          (map (fn [waiting-wsid]
+                 [:db/retract waiting-wsid :ws/waiting-for wsid])
+               (d/q '[:find [?waiting-ws ...]
+                      :in $ ?this-ws
+                      :where [?waiting-ws :ws/waiting-for ?this-ws]]
+                    db wsid))
+
+          final-tx-data
+          (concat
+            [{:db/id     wsid
+              :ws/answer "htid"}]
+            ahtdata
+
+            aht-copy-data
+            unwait-data
+
+            [{:db/id       "actid"
+              :act/command :act.command/ask
+              :act/content answer}
+             {:db/id  "datomic.tx"
+              :tx/ws  wsid
+              :tx/act "actid"}])]
+      (d/transact conn final-tx-data)))
+
 (defn show-ws [db]
   (let [wsid (first (wss-to-show db))
         ws-data (get-ws-data db wsid)
@@ -411,16 +472,6 @@
 
   (show-ws (d/db conn))
 
-  (unlock conn test-wsid test-ws-data "sq.0.a")
-
-  (show-ws (d/db conn))
-
-  (unlock conn test-wsid test-ws-data "q.0")
-
-  (show-ws (d/db conn))
-
-  ;; If you've already unlocked sq.0.a, you have to reset before this one,
-  ;; because there is no reply yet.
   (unlock conn test-wsid test-ws-data "sq.1.a")
 
   (show-ws (d/db conn))
@@ -429,81 +480,18 @@
 
   (show-ws (d/db conn))
 
-  ;; Reply "It's a nice city. Once I went to [Clojure/conj] there."
+  (reply conn test-wsid test-ws-data "Austin")
+
+  (show-ws (d/db conn))
+
+  (reply conn test-wsid test-ws-data
+         "It's a nice city. Once I went to [Clojure/conj] there.")
+
+  (show-ws (d/db conn))
 
   (unlock conn test-wsid test-ws-data "sq.1.a.0")
 
-  ;;;; Reply – gas phase
-
-  ;; Go from the ws to the placeholder, then from the placeholder to the
-  ;; pointers that point at it. Make a copy of the answer for each
-  ;; pointer and change the pointers to pointer at their copies. Throw away
-  ;; the placeholder. And the sub-ws!
-
-  ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
-  ;; in which it happens. – Because we don't need it anymore. Nobody will
-  ;; look at it. Even reflection will only look at it in an earlier version
-  ;; of the database. (Not sure about this.) But :pointer/target can refer to a
-  ;; workspace, so :pointer/target cannot be a component attribute, so we'd
-  ;; have to manually traverse the tree rooted in the workspace and retract
-  ;; all hypertexts. This would take at least an hour to implement.
-  ;; Retracting finished workspaces is not crucial, so don't do it for now.
-  ;; Do it later. (RM 2019-01-08)
-
-  (let [wsid test-wsid
-        wsdata test-ws-data
-        answer "Austin"
-
-        db (d/db conn)
-        ahtdata (ht->tx-data wsdata answer)
-
-        {:keys [db-after tempids]} (d/with db ahtdata)
-        aht-tempid (d/resolve-tempid db-after tempids "htid")
-
-        targeting-pids
-        (d/q '[:find [?p ...]
-           :in $ ?wsid
-           :where
-           [?p :pointer/target ?wsid]]
-         db wsid)
-
-        aht-copy-data
-        (mapcat (fn [pid]
-                  (let [[aht-copy-tempid aht-copy-tx-data]
-                        (cp-hypertext-tx-data db-after aht-tempid)]
-                    (conj
-                      aht-copy-tx-data
-                      {:db/id          pid
-                       :pointer/target aht-copy-tempid})))
-                targeting-pids)
-
-        ;; TODO: Make sure that if it's waiting for multiple wss, only the
-        ;; current one is removed.
-        unwait-data
-        (map (fn [waiting-wsid]
-               [:db/retract waiting-wsid :ws/waiting-for test-wsid])
-             (d/q '[:find [?waiting-ws ...]
-                    :in $ ?this-ws
-                    :where [?waiting-ws :ws/waiting-for ?this-ws]]
-                  db wsid))
-
-        final-tx-data
-        (concat
-          [{:db/id wsid
-            :ws/answer "htid"}]
-          ahtdata
-
-          aht-copy-data
-          unwait-data
-
-          [{:db/id       "actid"
-            :act/command :act.command/ask
-            :act/content answer}
-           {:db/id "datomic.tx"
-            :tx/ws wsid
-            :tx/act "actid"}])]
-    (d/transact conn final-tx-data))
-
+  (show-ws (d/db conn))
 
   ;;;; Reflection – gas phase
 
