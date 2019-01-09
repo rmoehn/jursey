@@ -20,6 +20,7 @@
 
 ;; ht … hypertext
 
+
 ;;;; Setup
 (def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
@@ -51,6 +52,7 @@
   (set-up false)
 
   )
+
 
 ;;;; Hypertext string → transaction map
 (def --Hypertext-parsing)
@@ -123,6 +125,7 @@
 (defn ht->tx-data [bg-data ht]
   (get (ht-tree->tx-data bg-data [] (assoc (parse-ht ht) 0 :embedded))
        :tx-data))
+
 
 ;;;; Rendering a workspace as a string
 (def --Hypertext-rendering)
@@ -203,6 +206,7 @@
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)])
                       (!get ws-data "sq")))})
 
+
 ;;;; Copying hypertext
 (def --Hypertext-copying)
 
@@ -266,6 +270,7 @@
 ;; have control over it (RM 2019-01-04).
 (defn cp-hypertext-tx-data [db id]
   (@#'datomic-helpers/translate-value (pull-cp-hypertext-data db id)))
+
 
 ;;;; Core API
 (def --Core-API)
@@ -437,6 +442,7 @@
     (def test-ws-data ws-data)
     [ws-data ws-str]))
 
+
 (def --Comment)
 
 (comment
@@ -487,10 +493,12 @@
 
   (show-ws (d/db conn))
 
+
   ;;;; Reflection – gas phase
 
   ;; Find out what the user wants to do with reflection. Derive a small set
   ;; of operations/available pointers etc. to enable that.
+
 
   ;;;; Archive
 
