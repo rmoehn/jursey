@@ -19,13 +19,18 @@
          :rename {safe-get get safe-get-in get-in}]])
 ;; Also uses: datomic.Util
 
-;; ht … hypertext
+;; ht   … hypertext
+;; pid  … pointer entity ID
+;; pmap … pointer map
 
 
 ;;;; Setup
 (def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
-(defn set-up [reset?]
+(declare test-agent)
+(declare conn)
+
+(defn set-up [{:keys [reset?]}]
   (def test-agent "test")
 
   (let [base-uri "datomic:free://localhost:4334/"
@@ -48,9 +53,9 @@
 
 (comment
 
-  (set-up true)
+  (set-up {:reset? true})
 
-  (set-up false)
+  (set-up {:reset? false})
 
   )
 
@@ -450,12 +455,14 @@
     (def test-ws-data ws-data)
     [ws-data ws-str]))
 
-(declare conn)
-(def state (atom nil))
-
-
 ;;;; Single client runner
 (def --Runner)
+
+;; Note: This is becoming ugly with transacts at all levels. But I think I can
+;; tidy it up when I'm working on the third milestone. Also, I'm not sure
+;; if I should abstract all the query stuff.
+
+(def last-shown-wsid (atom nil))
 
 (defn run-ask-root-question [conn agent question]
   (let [ask-data
@@ -475,18 +482,46 @@
         (unlock db-after wsid (get-ws-data db-after wsid) "sq.0.a")]
     (d/transact conn unlock-data)))
 
-(defn init-state [conn]
+(defn- pull-root-qa [conn wsid]
+  (let [db-at-start (d/db conn)
+        question (-> (get-ws-data db-at-start wsid)
+                     (get-in ["sq" "0" "q"])
+                     render-ht-data)]
+    (loop [db db-at-start]
+      (if (!get (d/entity db wsid) :ws/waiting-for)
+        [question :waiting]
+        (let [wsdata      (get-ws-data db wsid)
+              locked-pmap (s/select-first (s/walker :locked?) wsdata)]
+          (if (nil? locked-pmap) ; No locked pointers left.
+            [question (render-ht-data (get-in wsdata ["sq" "0" "a"]))]
+            (do @(d/transact conn
+                             (unlock-by-pointer-map
+                               db wsid locked-pmap (str locked-pmap)))
+                (recur (d/db conn)))))))))
+
+(defn pull-root-qas [conn agent]
+  (let [db (d/db conn)
+        finished-wsids
+           (d/q '[:find [?ws ...]
+                  :in $ ?handle
+                  :where
+                  [?a :agent/handle ?handle]
+                  [?a :agent/root-ws ?ws]
+                  (not [?ws :ws/waiting-for _])]
+                db agent)]
+    (map #(pull-root-qa conn %) finished-wsids)))
+
+(defn start-working [conn]
   (let [db   (d/db conn)
         wsid (first (wss-to-show db))]
-    (swap! state (constantly wsid))
-
+    (swap! last-shown-wsid (constantly wsid))
     (render-ws-data (get-ws-data db wsid))))
 
-(defn show-root-qas [db agent])
-
-(defn run [[cmd arg]]
+(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
+  (when trace?
+    (pprint/pprint command))
   (let [cmd-fn (get {:ask ask :unlock unlock :reply reply} cmd)
-        wsid @state
+        wsid @last-shown-wsid
         db (d/db conn)
         tx-data (cmd-fn db wsid (get-ws-data db wsid) arg)
 
@@ -494,148 +529,40 @@
         db (d/db conn)
         new-wsid (first (wss-to-show db))
 
-        _ (swap! state (constantly new-wsid))
-        ]
-    (when new-wsid
-      (render-ws-data (get-ws-data db new-wsid)))))
+        _ (swap! last-shown-wsid (constantly new-wsid))
 
-(defn run-transform [conn wsid wsdata [cmd arg]]
-  (let [cmd-fn (get {:ask ask :unlock unlock :reply reply} cmd)
-        db (d/db conn)
-        tx-data (cmd-fn db wsid wsdata arg)
-
-        blocking-before (d/q '[:find [?ws ...]
-                               :where [?ws :ws/blocking ?a]
-                                      [?a :agent/handle _]]
-                             db)
-        _ (d/transact conn tx-data)
-        db (d/db conn)
-        blocking-after (d/q '[:find [?ws ...]
-                               :where [?ws :ws/blocking ?a]
-                               [?a :agent/handle _]]
-                             db)
-        new-wsid (first (wss-to-show db))
-        ;; Find out if there is an answered, but unfinished root-ws.
-        ;; One way to do it is to look at {wss blocking users before tx} -
-        ;; {wss blocking users after tx}.
-        ;; That seems to be the only way from the outside. Of course from
-        ;; within `reply` we could see when its unblocking users.
-
-        new-wsdata (get-ws-data db wsid)
-        ]
-    (if-let [finished-wsid (set/difference blocking-before blocking-after)]
-      ;; Call myself with unlock of any locked pointers in the
-      ;; finished-wsid's answer. Unlock might want to mark a workspace as
-      ;; blocking something. – What would it be blocking? Normally what is
-      ;; passed in as wsid. It only uses that for the blocking information
-      ;; and in the reflection data.
-
-      ;; What about not going through the unlock command. Does it make sense
-      ;; to do something directly? Because this also messes up reflection.
-      ;; Maybe I should do something completely different.
-
-      ;; I could not actually give the root answer until all answer pointers
-      ;; in it are resolved. The reply command could notice "Oh, I'm
-      ;; unblocking an agent." and block it on all the unresolved answer
-      ;; pointers in the reply hypertext.
-
-      ;; And what happens when we run out of wss-to-show? Then we return nil
-      ;; or something like that.
-
-      _ _
-
-      )
-    )
-  )
-;; Looks like I have to pull this apart. I have a loop that makes new
-
-(def --New-comment)
-
-(defn test-root [conn]
-  (let [db
-        (d/db conn)
-
-        pull-root-qa
-        (fn pull-root-qa [conn wsid]
-          (let [question
-                (-> (get-ws-data (d/db conn) wsid)
-                    (get-in ["sq" "0" "q"])
-                    render-ht-data)]
-            (loop [db (d/db conn)]
-              (if (!get (d/entity db wsid) :ws/waiting-for)
-                [question :awaiting-action]
-                (let [wsdata      (get-ws-data db wsid)
-
-                      answer      (-> wsdata
-                                      (get-in ["sq" "0" "a"])
-                                      render-ht-data)
-
-                      pointer-map (s/select-first (s/walker :locked?) wsdata)
-
-                      _           (pprint/pprint [wsdata pointer-map])]
-
-                  (if (nil? pointer-map)
-                    [question answer]
-                    ;; no pointers left
-                    ;; return [question answer]
-
-                    ;; ws is waiting-for
-                    ;; return [question :awaiting-action]
-
-                    ;; pointers left, ws not waiting-for
-                    ;; unlock the first pointer and recur
-                    ;; This doesn't quite do the trick, because I need the path
-                    ;; of the pointer to unlock.
-                    (do @(d/transact conn
-                                     (-pprint-
-                                       (unlock-by-pointer-map
-                                         db wsid pointer-map (str pointer-map))))
-                        (recur (d/db conn)))))))))
-
-        finished-wsids
-        (d/q '[:find [?ws ...]
-               :where
-               [?a :agent/handle "test"]
-               [?a :agent/root-ws ?ws]
-               (not [?ws :ws/waiting-for _])]
-             db)]
-    (map #(pull-root-qa conn %) (-pprint- finished-wsids))))
-
-
-(comment
-
-  (set-up true)
-
-  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
-  (init-state conn)
-
-  (run [:ask "What is the capital city of $q.0?"])
-
-  (run [:reply "Just $sq.0.a."])
-
-  (test-root conn)
-
-  (init-state conn)
-
-  (run [:reply "Austin. Keep it [weird]."])
-
-  (test-root conn)
-
-  ;; This could return a list of question and answer pairs.
-  ;; We can't do a recursive unlock here, because there is no continuous
-  ;; runner. If we unlock an answer pointer, we have to `run` commands manually.
-  ;; So this should run unlocks until the workspace becomes waiting-for again.
-
-  ;; This is becoming ugly with transacts at all levels. But I think I can
-  ;; tidy it up when I'm working on the third milestone.
-
-  )
+        res (when new-wsid (render-ws-data (get-ws-data db new-wsid)))]
+    (when trace?
+      (pprint/pprint res))
+    res))
 
 
 (def --Comment)
 
 (comment
+
+  ;;;; Scenario Pointer 1
+
+  (set-up {:reset? true})
+
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+  (start-working conn)
+
+  (run [:ask "What is the capital city of $q.0?"])
+
+  (run [:reply "Just $sq.0.a."])
+
+  (pull-root-qas conn test-agent)
+
+  (start-working conn)
+
+  (run [:reply "Austin. Keep it [weird]."])
+
+  (pull-root-qas conn test-agent)
+
+
+  ;;;; Scenario Pointer 2
 
   (do
     (ask-root-question conn test-agent "What is the capital of [Texas]?")
