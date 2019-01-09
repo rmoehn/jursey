@@ -447,15 +447,8 @@
               :tx/act "actid"}])]
       final-tx-data))
 
-(defn show-ws [db]
-  (let [wsid (first (wss-to-show db))
-        ws-data (get-ws-data db wsid)
-        ws-str  (render-ws-data ws-data)]
-    (def test-wsid wsid)
-    (def test-ws-data ws-data)
-    [ws-data ws-str]))
 
-;;;; Single client runner
+;;;; Single-user runner
 (def --Runner)
 
 ;; Note: This is becoming ugly with transacts at all levels. But I think I can
@@ -541,83 +534,53 @@
 
 (comment
 
-  ;;;; Scenario Pointer 1
+  ;;;; Scenario: Pointer 1
+
+  ;; Challenges: Replying in a root workspace with a pointer to a yet ungiven
+  ;; sub-answer.
 
   (set-up {:reset? true})
-
   (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
   (start-working conn)
-
   (run [:ask "What is the capital city of $q.0?"])
-
   (run [:reply "Just $sq.0.a."])
 
   (pull-root-qas conn test-agent)
 
   (start-working conn)
-
   (run [:reply "Austin. Keep it [weird]."])
 
   (pull-root-qas conn test-agent)
 
 
-  ;;;; Scenario Pointer 2
+  ;;;; Scenario: Pointer 2
 
-  (do
-    (ask-root-question conn test-agent "What is the capital of [Texas]?")
+  ;; Challenges: Asking a sub-question that contains a pointer to a yet ungiven
+  ;; answer to another sub-question.
 
-    (show-ws (d/db conn))
+  (set-up {:reset? true})
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-    ;; Just for testing. Later the root question and the root ws must be separate.
-    (let [pid (q '[:find ?p .
-                   :in $ ?ws
-                   :where
-                   [?ws :ws/question ?q]
-                   [?q :hypertext/pointer ?p]]
-                 (d/db conn) test-wsid)]
-      (d/transact conn [{:db/id           pid
-                         :pointer/locked? true}])))
+  (start-working conn)
+  (doseq [command
+          [[:ask "What is the capital city of $q.0?"]
+           [:ask "What do you think about $sq.0.a?"]
+           [:unlock "sq.1.a"]
+           [:unlock "q.0"]
+           [:reply "Austin"]
+           [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
+           [:unlock "sq.1.a.0"]
+           [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
+    (run command {:trace? true}))
 
-  (show-ws (d/db conn))
-
-  (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
-
-  (show-ws (d/db conn))
-
-  (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
-
-  (show-ws (d/db conn))
-
-  (unlock conn test-wsid test-ws-data "sq.1.a")
-
-  (show-ws (d/db conn))
-
-  (unlock conn test-wsid test-ws-data "q.0")
-
-  (show-ws (d/db conn))
-
-  (reply conn test-wsid test-ws-data "Austin")
-
-  (show-ws (d/db conn))
-
-  (reply conn test-wsid test-ws-data
-         "It's a nice city. Once I went to [Clojure/conj] there.")
-
-  (show-ws (d/db conn))
-
-  (unlock conn test-wsid test-ws-data "sq.1.a.0")
-
-  (show-ws (d/db conn))
-
-  (reply conn test-wsid test-ws-data
-         "It is Austin. $sq.1.a.0 happened there once.")
+  (pull-root-qas conn test-agent)
 
 
   ;;;; Reflection – gas phase
 
-  ;; Find out what the user wants to do with reflection. Derive a small set
-  ;; of operations/available pointers etc. to enable that.
+  ;; Find out what the user wants to do with reflection. Derive a small set of
+  ;; operations/available pointers etc. to enable that.
 
 
   ;;;; Archive
