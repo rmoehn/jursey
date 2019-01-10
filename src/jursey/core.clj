@@ -24,7 +24,10 @@
 ;;;; Setup
 (def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
-(defn set-up [reset?]
+(declare test-agent)
+(declare conn)
+
+(defn set-up [{:keys [reset?]}]
   (def test-agent "test")
 
   (let [base-uri "datomic:free://localhost:4334/"
@@ -47,9 +50,9 @@
 
 (comment
 
-  (set-up true)
+  (set-up {:reset? true})
 
-  (set-up false)
+  (set-up {:reset? false})
 
   )
 
