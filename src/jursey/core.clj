@@ -10,13 +10,17 @@
             [plumbing.core :as plumbing]
             [such.imperfection :refer [-pprint-]]]
   [:use [plumbing.core
-         :only [safe-get safe-get-in]
+         :only [safe-get safe-get-in]
          :rename {safe-get sget safe-get-in sget-in}]])
 ;; Also uses: datomic.Util
 
+;; aht  … answer hypertext
 ;; ht   … hypertext
 ;; pid  … pointer entity ID
 ;; pmap … pointer map
+;; qht  … question hypertext
+;; ws   … workspace
+;; wsid … workspce entity ID
 
 
 ;;;; Setup
@@ -88,12 +92,11 @@
                :pointer/locked? (sget-in wsdata (conj path :locked?))
                :pointer/target  (sget-in wsdata (conj path :target))}}))
 
-;; Note: The Datomic docs say that it ‘represents transaction requests as
-;; data structures’. So I call such a data structures (list of
-;; lists or maps) a ‘transaction request’ and its parts ‘transaction parts’.
-;; There are also the nested data structures that I turn into a transaction
-;; request with datomic-helpers/translate-value. These I call ‘transaction
-;; trees’.
+;; Note: Datomic's docs say that it "represents transaction requests as data
+;; structures". That's why I call such a data structure (list of lists or maps)
+;; a "transaction request" and its parts "transaction parts". There are also the
+;; nested data structures that I turn into a transaction request with
+;; datomic-helpers/translate-value. These I call "transaction trees".
 (declare process-httree)
 
 (defn tmp-htid
@@ -101,28 +104,34 @@
   [loc]
   (str "htid" (string/join \. loc)))
 
+;; Note: Is this the right approach?
+(defn sgetter [k]
+  (fn [m]
+    (sget m k)))
+
 ;; TODO: Document this.
-;; TODO: Find a better name for wsdata and children-data.
+;; TODO: Find a better name for wsdata.
 (defn process-embedded [wsdata loc children]
-  (let [children-data (map-indexed (fn [i c]
-                                     (process-httree wsdata
-                                                     (conj loc i)
-                                                     c))
-                                   children)]
+  (let [processed-children (map-indexed (fn [i c]
+                                          (process-httree wsdata
+                                                          (conj loc i)
+                                                          c))
+                                        children)]
     {:repr    (str \$ (last loc))
      :pointer {:pointer/name    (str (last loc))
                :pointer/target  (tmp-htid loc)
                :pointer/locked? false}
-     :txreq (conj
-              (apply concat (filter some? (map :txreq children-data)))
-              {:db/id             (tmp-htid loc)
-               :hypertext/content (apply str (map :repr children-data))
-               :hypertext/pointer (filter some? (map :pointer children-data))})}))
+     :txreq   (conj
+                (apply concat (filter some? (map :txreq processed-children)))
+                {:db/id             (tmp-htid loc)
+                 :hypertext/content (apply str (map (sgetter :repr)
+                                                    processed-children))
+                 :hypertext/pointer (filter some? (map :pointer processed-children))})}))
 
 (defn process-httree [wsdata loc [tag & children]]
   "
   `loc` is the location/path of the current element in the syntax tree.
-  ‘httree’ means the syntax tree that results from parsing hypertext."
+  'httree' means the syntax tree that results from parsing hypertext."
   (case tag
     ;; :repr is the string that will be included in the parent hypertext.
     :text     {:repr (first children)}
@@ -143,7 +152,7 @@
 ;; (RM 2018-12-27)
 ;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
 (defn replace-substrings
-  "Replace occurrences of the keys of `m` in `s` with the corresponding vals. "
+  "Replace occurrences of the keys of `m` in `s` with the corresponding vals."
   [s m]
   (reduce-kv string/replace s m))
 
@@ -210,8 +219,7 @@
 
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
-   "sq" (plumbing/map-vals #(render-qadata %)
-                           (get wsdata "sq"))})
+   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))})
 
 
 ;;;; Copying hypertext
@@ -248,8 +256,8 @@
                   [(f k) (f v)])
                 m)))
 
-;; TODO: Change to Derek's semantics where each occurrence of the same
-;; pointer gets its own copy. Implementing that would take half an hour that
+;; TODO: Change to Derek's semantics, where each occurrence of the same
+;; pointer gets its own copy. Implementing this would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
 ;; Note: For now I don't worry about tail recursion and things like that.
 (defn get-cp-hypertext-txtree [db id]
@@ -407,7 +415,7 @@
              db wsid)
 
         ;; Make a copy of the answer for each pointer that points at it.
-        aht-copy-data
+        aht-copy-txreq
         (mapcat (fn [pid]
                   (let [[aht-copy-tempid aht-copy-txreq]
                         (cp-hypertext-txreq db-after aht-tempid)]
@@ -420,7 +428,7 @@
         ;; TODO: Make sure that if it's waiting for multiple wss, only the
         ;; current one is removed. I'm not sure about the semantics of
         ;; retract. (RM 2019-01-08)
-        unwait-data
+        unwait-txreq
         (map (fn [waiting-wsid]
                [:db/retract waiting-wsid :ws/waiting-for wsid])
              (d/q '[:find [?waiting-ws ...]
@@ -434,8 +442,8 @@
             :ws/answer "htid"}]
           aht-txreq
 
-          aht-copy-data
-          unwait-data
+          aht-copy-txreq
+          unwait-txreq
 
           [{:db/id       "actid"
             :act/command :act.command/ask
@@ -547,7 +555,7 @@
 
   ;;;; Scenario: Pointer 1
 
-  ;; Challenges: Replying in a root workspace with a pointer to a yet ungiven
+  ;; Tests: Replying in a root workspace with a pointer to a yet ungiven
   ;; sub-answer.
 
   (set-up {:reset? true})
@@ -567,7 +575,7 @@
 
   ;;;; Scenario: Pointer 2
 
-  ;; Challenges: Asking a sub-question that contains a pointer to a yet ungiven
+  ;; Tests: Asking a sub-question that contains a pointer to a yet ungiven
   ;; answer to another sub-question.
 
   (set-up {:reset? true})
@@ -580,13 +588,17 @@
            [:unlock "sq.1.a"]
            [:unlock "q.0"]
            [:reply "Austin"]
-           [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
+           [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
            [:unlock "sq.1.a.0"]
            [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
     (run command {:trace? true})
     (println))
 
   (get-root-qas conn test-agent)
+
+
+  ;; TODO tests:
+  ;; - Asking or replying [with [nested] hypertext].
 
 
   ;;;; Reflection – gas phase
@@ -611,8 +623,8 @@
 (def --Tools)
 
 ;; Sometimes I make the mistake to refer to a tempid that is not defined
-;; anywhere in the transaction. Datomic's error message is uninformative,
-;; so this can help to find what I forgot or misspelled.
+;; anywhere in the transaction. Datomic's error message in that case is
+;; uninformative, so this can help to find what I forgot or misspelled.
 (comment
 
   (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
