@@ -599,6 +599,7 @@
 
   ;; TODO tests:
   ;; - Asking or replying [with [nested] hypertext].
+  ;; - Pointing to nested hypertext ($sq.0.0).
 
 
   ;;;; Reflection – gas phase
