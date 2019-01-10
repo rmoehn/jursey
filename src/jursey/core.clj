@@ -5,9 +5,6 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [com.rpl.specter :as s]
-            ;; TODO: Don't refer q. (RM 2019-01-08)
-            [datomic.api :refer [q] :as d]
-            [datomic.api :as d]
             [datomic.api :as d]
             datomic-helpers
             [instaparse.core :as insta]
@@ -294,7 +291,7 @@
   workspace, or by an agent if it would answer one of that agent's root
   questions."
   [db]
-  (q '[:find [?ws ...]
+  (d/q '[:find [?ws ...]
        :where
        [_ :ws/waiting-for ?ws]
        (not [_ :agent/root-ws ?ws])
