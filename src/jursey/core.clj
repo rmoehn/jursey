@@ -2,26 +2,24 @@
   [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
-            [clojure.set :as set]
-            [clojure.stacktrace :as stktr]
+            [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [com.rpl.specter :as s]
-   ;; TODO: Don't refer q. (RM 2019-01-08)
+            ;; TODO: Don't refer q. (RM 2019-01-08)
             [datomic.api :refer [q] :as d]
             [datomic.api :as d]
             [datomic.api :as d]
             datomic-helpers
             [instaparse.core :as insta]
-            [such.imperfection :refer [-pprint-]]
-            [clojure.walk :as walk]]
+            [such.imperfection :refer [-pprint-]]]
   [:use [plumbing.core
          :only [safe-get safe-get-in]
          :rename {safe-get get safe-get-in get-in}]])
 ;; Also uses: datomic.Util
 
 ;; ht   … hypertext
-;; pid  … pointer entity ID
-;; pmap … pointer map
+;; pid  … pointer entity ID
+;; pmap … pointer map
 
 
 ;;;; Setup
@@ -162,7 +160,7 @@
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
-;; TODO: Turn !get-in into get-in. (RM 2019-01-04)
+;; TODO: Turn get-in into sget-in and !get-in into get-in. (RM 2019-01-04)
 (defn get-ht-data [db id]
   (let [ht (d/pull db '[*] id)]
     (into {:text    (get ht :hypertext/content)
@@ -280,24 +278,15 @@
 ;;;; Core API
 (def --Core-API)
 
-;; Invariants:
-;; - Never show a waiting workspace to the user.
+;; Invariants/rules:
+;; - Never show a waiting workspace to the user (in fact, never call
+;;   get-ws-data on a waiting workspace).
 ;; - Only show a workspaces to the user if it is waited for.
+;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
+;;   workspaces have a :ws/question.
 
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
-
-(defn ask-root-question [conn agent question]
-  (d/transact conn
-              (concat [{:db/id       "wsid"
-                        :ws/question "htid"}
-                       {:db/id         [:agent/handle agent]
-                        :agent/root-ws "wsid"}]
-                      (ht->tx-data {} question))))
-;; SKETCH:
-;; - Add that the root ws is blocking the agent.
-;; - Put in the original question, then a copy of it with locked pointers and
-;;   make the root ws refer to it.
 
 (defn wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
@@ -311,7 +300,6 @@
        (not [_ :agent/root-ws ?ws])
        (not [?ws :ws/waiting-for _])]
      db))
-;; SKETCH: Change this to blocking and not being blocked.
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
@@ -352,7 +340,7 @@
             :tx/act "actid"}])]
     final-tx-data))
 
-(defn unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
+(defn- unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
   (let [target (d/pull db '[*] target-id)
 
         set-waiting-data
@@ -383,8 +371,7 @@
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
-  (unlock-by-pointer-map db wsid (get-in wsdata (->path pointer))
-                         pointer))
+  (unlock-by-pointer-map db wsid (get-in wsdata (->path pointer)) pointer))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -437,7 +424,6 @@
 
             aht-copy-data
             unwait-data
-            ; In the case of a root answer these two are empty.
 
             [{:db/id       "actid"
               :act/command :act.command/ask
@@ -452,17 +438,19 @@
 (def --Runner)
 
 ;; Note: This is becoming ugly with transacts at all levels. But I think I can
-;; tidy it up when I'm working on the third milestone. Also, I'm not sure
-;; if I should abstract all the query stuff.
+;; tidy it up when I'm working on the third milestone. Also, maybe I should
+;; abstract all the query stuff.
 
 (def last-shown-wsid (atom nil))
 
+;; TODO: Turn this into a function that returns data to be transacted by
+;; someone else, just like the rest of the core API. (RM 2019-01-10)
 (defn run-ask-root-question [conn agent question]
   (let [ask-data
         (concat
           (ask (d/db conn) "wsid" {} question)
 
-          [{:db/id "wsid"}
+          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
            {:db/id         [:agent/handle agent]
             :agent/root-ws "wsid"}])
 
@@ -475,6 +463,10 @@
         (unlock db-after wsid (get-ws-data db-after wsid) "sq.0.a")]
     (d/transact conn unlock-data)))
 
+;; MAYBE TODO: Change the unlock, so that it goes through the same route as
+;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
+;; directly. For this I'd have to find or write a walker that gives me not
+;; just nodes, but also their paths. (RM 2019-01-10)
 (defn- pull-root-qa [conn wsid]
   (let [db-at-start (d/db conn)
         question (-> (get-ws-data db-at-start wsid)
@@ -572,7 +564,8 @@
            [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
            [:unlock "sq.1.a.0"]
            [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
-    (run command {:trace? true}))
+    (run command {:trace? true})
+    (println))
 
   (pull-root-qas conn test-agent)
 

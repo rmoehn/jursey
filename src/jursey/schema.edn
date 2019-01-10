@@ -33,7 +33,6 @@
 {:db/ident :ws/waiting-for
  :db/valueType :db.type/ref  ; ws
  :db/cardinality :db.cardinality/many}
-;; SKETCH: Turn this into :ws/blocking Either ws agent.
 
 ;;;; qa
 
