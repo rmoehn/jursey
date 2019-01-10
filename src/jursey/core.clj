@@ -2,8 +2,7 @@
   [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
-            [clojure.set :as set]
-            [clojure.stacktrace :as stktr]
+            [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [com.rpl.specter :as s]
             ;; TODO: Don't refer q. (RM 2019-01-08)
@@ -18,7 +17,9 @@
          :rename {safe-get get safe-get-in get-in}]])
 ;; Also uses: datomic.Util
 
-;; ht … hypertext
+;; ht   … hypertext
+;; pid  … pointer entity ID
+;; pmap … pointer map
 
 
 ;;;; Setup
@@ -156,11 +157,10 @@
                                          (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
                                     name->ht-data))]
     (replace-occurrences (get ht-data :text) pointer->text)))
-;; Doesn't have to change.
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
-;; TODO: Turn !get-in into get-in. (RM 2019-01-04)
+;; TODO: Turn get-in into sget-in and !get-in into get-in. (RM 2019-01-04)
 (defn get-ht-data [db id]
   (let [ht (d/pull db '[*] id)]
     (into {:text    (get ht :hypertext/content)
@@ -277,6 +277,13 @@
 
 ;;;; Core API
 (def --Core-API)
+
+;; Invariants/rules:
+;; - Never show a waiting workspace to the user (in fact, never call
+;;   get-ws-data on a waiting workspace).
+;; - Only show a workspaces to the user if it is waited for.
+;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
+;;   workspaces have a :ws/question.
 
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
