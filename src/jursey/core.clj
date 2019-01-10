@@ -90,7 +90,10 @@
 
 ;; Note: The Datomic docs say that it ‘represents transaction requests as
 ;; data structures’. So I call such a data structures (list of
-;; lists or maps) a ‘transaction request’ its parts ‘transaction parts’.
+;; lists or maps) a ‘transaction request’ and its parts ‘transaction parts’.
+;; There are also the nested data structures that I turn into a transaction
+;; request with datomic-helpers/translate-value. These I call ‘transaction
+;; trees’.
 (declare process-httree)
 
 (defn tmp-htid
@@ -147,8 +150,10 @@
 (defn string-indexed-map
   "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
   Curved quotation marks substitute for straight ones in this docstring."
-  [f s]
-  (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
+  [f xs]
+  (into {} (map-indexed (fn [i v]
+                          [(str i) (f v)])
+                        xs)))
 
 (defn render-htdata [htdata]
   (let [name->htdata
@@ -177,9 +182,9 @@
                     (get-htdata db (sget-in p [:pointer/target :db/id])))])
                (get ht :hypertext/pointer [])))))
 
-(defn get-sub-qadata [db
-                       {{q-htid :db/id} :qa/question
-                        {apid :db/id}   :qa/answer}]
+(defn get-qadata [db
+                  {{q-htid :db/id} :qa/question
+                   {apid :db/id}   :qa/answer}]
   {"q" (get-htdata db q-htid)
    "a" (let [{pid :db/id
               locked? :pointer/locked?
@@ -190,7 +195,7 @@
             :target target}
            (get-htdata db target)))})
 
-(defn render-sub-qadata [qadata]
+(defn render-qadata [qadata]
   {"q" (render-htdata (sget qadata "q"))
    "a" (if (sget-in qadata ["a" :locked?])
          :locked
@@ -200,29 +205,26 @@
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
-    (plumbing/assoc-when {}
-                         "q" (some->> qid (get-htdata db))
-                         "sq" (string-indexed-map #(get-sub-qadata db %) sub-qas))))
+    {"q"  (some->> qid (get-htdata db))
+     "sq" (string-indexed-map #(get-qadata db %) sub-qas)}))
 
-;; TODO: Add sq only if there is a sub-question.
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
-   ;; TODO: Use map-vals here. (RM 2018-12-28)
-   "sq" (into {} (map (fn [[k v]] [k (render-sub-qadata v)])
-                      (get wsdata "sq")))})
+   "sq" (plumbing/map-vals #(render-qadata %)
+                           (get wsdata "sq"))})
 
 
 ;;;; Copying hypertext
 (def --Hypertext-copying)
 
-(declare get-cp-hypertext-data)
+(declare get-cp-hypertext-txtree)
 
 ;; Note: This locks all the pointer copies, because that's what I need when I
 ;; copy a hypertext to another workspace. Adapt if you need faithfully copied
 ;; locked status somewhere.
-(defn get-cp-pointer-data [db
-                            {{target-id :db/id} :pointer/target}
-                            new-name]
+(defn get-cp-pointer-txtree [db
+                             {{target-id :db/id} :pointer/target}
+                             new-name]
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
   (let [target
         (d/pull db '[*] target-id)
@@ -230,7 +232,7 @@
         new-target
         (cond
           (some? (get target :hypertext/content))
-          (get-cp-hypertext-data db target-id)
+          (get-cp-hypertext-txtree db target-id)
 
           (some? (get target :ws/question))
           target-id
@@ -242,39 +244,40 @@
      :pointer/locked? true}))
 
 (defn map-keys-vals [f m]
-  (into {} (map (fn [[k v]] [(f k) (f v)]) m)))
+  (into {} (map (fn [[k v]]
+                  [(f k) (f v)])
+                m)))
 
 ;; TODO: Change to Derek's semantics where each occurrence of the same
 ;; pointer gets its own copy. Implementing that would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
-;; TODO: Find some sensible semantics/way to deal with get and friends.
-;; – The current semantics is like Python with get = __getitem__ and get =
-;; get. This is quite okay. I just have to find better names, I guess. (RM
-;; 2019-01-04)
 ;; Note: For now I don't worry about tail recursion and things like that.
-(defn get-cp-hypertext-data [db id]
+(defn get-cp-hypertext-txtree [db id]
   (let [htdata
         (d/pull db '[*] id)
 
-        old->new-pointer
-        (into {} (map-indexed #(vector (sget %2 :pointer/name) (str %1))
+        orig->anon-pointer
+        (into {} (map-indexed (fn [i pmap]
+                                [(sget pmap :pointer/name) (str i)])
                               (get htdata :hypertext/pointer)))
 
-        sub-ress
-        (mapv #(get-cp-pointer-data db % (sget old->new-pointer
-                                               (sget % :pointer/name)))
+        pointer-txtrees
+        (mapv (fn [pmap]
+                (->> (sget pmap :pointer/name)
+                     (sget orig->anon-pointer)
+                     (get-cp-pointer-txtree db pmap)))
               (get htdata :hypertext/pointer []))]
     (-> htdata
         (dissoc :db/id)
-        (assoc :hypertext/pointer sub-ress)
+        (assoc :hypertext/pointer pointer-txtrees)
         (assoc :hypertext/content
                (replace-substrings (sget htdata :hypertext/content)
-                                   (map-keys-vals #(str \$ %) old->new-pointer))))))
+                                   (map-keys-vals #(str \$ %) orig->anon-pointer))))))
 
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
 ;; have control over it (RM 2019-01-04).
 (defn cp-hypertext-txreq [db id]
-  (@#'datomic-helpers/translate-value (get-cp-hypertext-data db id)))
+  (@#'datomic-helpers/translate-value (get-cp-hypertext-txtree db id)))
 
 
 ;;;; Core API
@@ -283,7 +286,7 @@
 ;; Invariants/rules:
 ;; - Never show a waiting workspace to the user (in fact, never call
 ;;   get-wsdata on a waiting workspace).
-;; - Only show a workspaces to the user if it is waited for.
+;; - Only show a workspace to the user if it is waited for.
 ;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
 ;;   workspaces have a :ws/question.
 
