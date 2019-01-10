@@ -324,31 +324,31 @@
         ;; at it.
         [qht-copy-tempid qht-copy-txreq]
         (cp-hypertext-txreq db-after
-                              (d/resolve-tempid db-after tempids "htid"))
+                            (d/resolve-tempid db-after tempids "htid"))
 
         final-txreq
-                (concat
-                  [{:db/id     wsid
-                    :ws/sub-qa "qaid"}]
+        (concat
+          [{:db/id     wsid
+            :ws/sub-qa "qaid"}]
 
-                  qht-txreq
-                  [{:db/id       "qaid"
-                    :qa/question "htid"
-                    :qa/answer   "apid"}
-                   {:db/id           "apid"
-                    :pointer/locked? true
-                    :pointer/target  "sub-wsid"}]
+          qht-txreq
+          [{:db/id       "qaid"
+            :qa/question "htid"
+            :qa/answer   "apid"}
+           {:db/id           "apid"
+            :pointer/locked? true
+            :pointer/target  "sub-wsid"}]
 
-                  qht-copy-txreq
-                  [{:db/id       "sub-wsid"
-                    :ws/question qht-copy-tempid}
+          qht-copy-txreq
+          [{:db/id       "sub-wsid"
+            :ws/question qht-copy-tempid}
 
-                   {:db/id       "actid"
-                    :act/command :act.command/ask
-                    :act/content question}
-                   {:db/id  "datomic.tx"
-                    :tx/ws  wsid
-                    :tx/act "actid"}])]
+           {:db/id       "actid"
+            :act/command :act.command/ask
+            :act/content question}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
     final-txreq))
 
 (defn- unlock-by-pmap [db wsid {target-id :target pid :id} pointer]
