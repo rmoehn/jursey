@@ -80,13 +80,13 @@
 (defn ->path [pointer & relpath]
   (into (string/split pointer #"\.") relpath))
 
-(defn process-pointer [bg-data dollar-pointer]
+(defn process-pointer [wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
         path (->path pointer)]
     {:repr    dollar-pointer
      :pointer {:pointer/name    pointer
-               :pointer/locked? (get-in bg-data (conj path :locked?))
-               :pointer/target  (get-in bg-data (conj path :target))}}))
+               :pointer/locked? (get-in wsdata (conj path :locked?))
+               :pointer/target  (get-in wsdata (conj path :target))}}))
 
 (declare ht-tree->tx-data)
 
@@ -96,10 +96,10 @@
   (str "htid" (string/join \. loc)))
 
 ;; TODO: Document this.
-;; TODO: Find a better name for bg-data and children-data.
-(defn process-embedded [bg-data loc children]
+;; TODO: Find a better name for wsdata and children-data.
+(defn process-embedded [wsdata loc children]
   (let [children-data (map-indexed (fn [i c]
-                                     (ht-tree->tx-data bg-data
+                                     (ht-tree->tx-data wsdata
                                                        (conj loc i)
                                                        c))
                                    children)]
@@ -113,18 +113,18 @@
                  :hypertext/content (apply str (map :repr children-data))
                  :hypertext/pointer (filter some? (map :pointer children-data))})}))
 
-(defn ht-tree->tx-data [bg-data loc [tag & children]]
+(defn ht-tree->tx-data [wsdata loc [tag & children]]
   "
   `loc` is the location/path of the current element in the syntax tree."
   (case tag
     ;; :repr is the string that will be included in the parent hypertext.
     :text     {:repr (first children)}
-    :pointer  (process-pointer bg-data (first children))
-    :embedded (process-embedded bg-data loc children)))
+    :pointer  (process-pointer wsdata (first children))
+    :embedded (process-embedded wsdata loc children)))
 
 ;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
-(defn ht->tx-data [bg-data ht]
-  (get (ht-tree->tx-data bg-data [] (assoc (parse-ht ht) 0 :embedded))
+(defn ht->tx-data [wsdata ht]
+  (get (ht-tree->tx-data wsdata [] (assoc (parse-ht ht) 0 :embedded))
        :tx-data))
 
 
@@ -191,20 +191,20 @@
          :locked
          (render-ht-data (get qa-data "a")))})
 
-(defn get-ws-data [db id]
+(defn get-wsdata [db id]
   (let [pull-res  (d/pull db '[*] id)
-        ws-data {"q" (some->> (!get-in pull-res [:ws/question :db/id])
+        wsdata {"q" (some->> (!get-in pull-res [:ws/question :db/id])
                               (get-ht-data db))}]
     (if-some [sq (!get pull-res :ws/sub-qa)]
-      (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
-      ws-data)))
+      (assoc wsdata "sq" (str-idx-map #(get-sub-qa-data db %) sq))
+      wsdata)))
 
 ;; TODO: Add sq only if there is a sub-question.
-(defn render-ws-data [ws-data]
-  {"q"  (render-ht-data (get ws-data "q"))
+(defn render-wsdata [wsdata]
+  {"q"  (render-ht-data (get wsdata "q"))
    ;; TODO: Use map-vals here. (RM 2018-12-28)
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)])
-                      (!get ws-data "sq")))})
+                      (!get wsdata "sq")))})
 
 
 ;;;; Copying hypertext
@@ -277,7 +277,7 @@
 
 ;; Invariants/rules:
 ;; - Never show a waiting workspace to the user (in fact, never call
-;;   get-ws-data on a waiting workspace).
+;;   get-wsdata on a waiting workspace).
 ;; - Only show a workspaces to the user if it is waited for.
 ;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
 ;;   workspaces have a :ws/question.
@@ -302,8 +302,8 @@
 ;; exist. (RM 2018-12-28)
 ;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;; alright.
-(defn ask [db wsid bg-data question]
-  (let [qhtdata (ht->tx-data bg-data question)
+(defn ask [db wsid wsdata question]
+  (let [qhtdata (ht->tx-data wsdata question)
 
         {:keys [db-after tempids]}
         (d/with db qhtdata)
@@ -457,7 +457,7 @@
         wsid (d/resolve-tempid db-after tempids "wsid")
 
         unlock-data
-        (unlock db-after wsid (get-ws-data db-after wsid) "sq.0.a")]
+        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-data)))
 
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
@@ -466,13 +466,13 @@
 ;; just nodes, but also their paths. (RM 2019-01-10)
 (defn- pull-root-qa [conn wsid]
   (let [db-at-start (d/db conn)
-        question (-> (get-ws-data db-at-start wsid)
+        question (-> (get-wsdata db-at-start wsid)
                      (get-in ["sq" "0" "q"])
                      render-ht-data)]
     (loop [db db-at-start]
       (if (!get (d/entity db wsid) :ws/waiting-for)
         [question :waiting]
-        (let [wsdata      (get-ws-data db wsid)
+        (let [wsdata      (get-wsdata db wsid)
               locked-pmap (s/select-first (s/walker :locked?) wsdata)]
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-ht-data (get-in wsdata ["sq" "0" "a"]))]
@@ -497,7 +497,7 @@
   (let [db   (d/db conn)
         wsid (first (wss-to-show db))]
     (swap! last-shown-wsid (constantly wsid))
-    (render-ws-data (get-ws-data db wsid))))
+    (render-wsdata (get-wsdata db wsid))))
 
 (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
   (when trace?
@@ -505,7 +505,7 @@
   (let [cmd-fn (get {:ask ask :unlock unlock :reply reply} cmd)
         wsid @last-shown-wsid
         db (d/db conn)
-        tx-data (cmd-fn db wsid (get-ws-data db wsid) arg)
+        tx-data (cmd-fn db wsid (get-wsdata db wsid) arg)
 
         _ (d/transact conn tx-data)
         db (d/db conn)
@@ -513,7 +513,7 @@
 
         _ (swap! last-shown-wsid (constantly new-wsid))
 
-        res (when new-wsid (render-ws-data (get-ws-data db new-wsid)))]
+        res (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
     (when trace?
       (pprint/pprint res))
     res))
