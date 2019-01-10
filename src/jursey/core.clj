@@ -196,8 +196,8 @@
 
 (defn get-ws-data [db id]
   (let [pull-res  (d/pull db '[*] id)
-        q-ht-data (get-ht-data db (get-in pull-res [:ws/question :db/id]))
-        ws-data {"q" q-ht-data}]
+        ws-data {"q" (some->> (!get-in pull-res [:ws/question :db/id])
+                              (get-ht-data db))}]
     (if-some [sq (!get pull-res :ws/sub-qa)]
       (assoc ws-data "sq" (str-idx-map #(get-sub-qa-data db %) sq))
       ws-data)))
@@ -288,14 +288,6 @@
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
 
-(defn ask-root-question [conn agent question]
-  (d/transact conn
-              (concat [{:db/id       "wsid"
-                        :ws/question "htid"}
-                       {:db/id         [:agent/handle agent]
-                        :agent/root-ws "wsid"}]
-                      (ht->tx-data {} question))))
-
 (defn wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
   Ie. they should and can be worked on. A workspace can be waited for by another
@@ -304,9 +296,8 @@
   [db]
   (q '[:find [?ws ...]
        :where
-       (or [_ :ws/waiting-for ?ws]
-           (and [_ :agent/root-ws ?ws]
-                (not [?ws :ws/answer _])))
+       [_ :ws/waiting-for ?ws]
+       (not [_ :agent/root-ws ?ws])
        (not [?ws :ws/waiting-for _])]
      db))
 
@@ -314,10 +305,8 @@
 ;; exist. (RM 2018-12-28)
 ;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;; alright.
-(defn ask [conn wsid bg-data question]
-  (let [db (d/db conn)
-
-        qhtdata (ht->tx-data bg-data question)
+(defn ask [db wsid bg-data question]
+  (let [qhtdata (ht->tx-data bg-data question)
 
         {:keys [db-after tempids]}
         (d/with db qhtdata)
@@ -349,13 +338,10 @@
            {:db/id  "datomic.tx"
             :tx/ws  wsid
             :tx/act "actid"}])]
-    (d/transact conn final-tx-data)))
+    final-tx-data))
 
-;; TODO: Check that the pointer is actually locked.
-(defn unlock [conn wsid wsdata pointer]
-  (let [db (d/db conn)
-        path (->path pointer :target)
-        target (d/pull db '[*] (get-in wsdata path))
+(defn- unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
+  (let [target (d/pull db '[*] target-id)
 
         set-waiting-data
         (if (!get target :ws/question) ; Must be a pointer to an ungiven answer.
@@ -372,7 +358,7 @@
           ;; until the waiting-for is cleared. At that point the target will be
           ;; renderable. This way I don't have to find all the pointers with
           ;; pending unlock after the reply is given.
-          [{:db/id           (get-in wsdata (->path pointer :id))
+          [{:db/id           pid
             :pointer/locked? false}
 
            {:db/id       "actid"
@@ -381,7 +367,11 @@
            {:db/id  "datomic.tx"
             :tx/ws  wsid
             :tx/act "actid"}])]
-    (d/transact conn tx-data)))
+    tx-data))
+
+;; TODO: Check that the pointer is actually locked.
+(defn unlock [db wsid wsdata pointer]
+  (unlock-by-pointer-map db wsid (get-in wsdata (->path pointer)) pointer))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -392,9 +382,8 @@
 ;; hypertexts. This would take at least an hour to implement. Retracting
 ;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
 ;; 2019-01-08)
-(defn reply [conn wsid wsdata answer]
-    (let [db (d/db conn)
-          ahtdata (ht->tx-data wsdata answer)
+(defn reply [db wsid wsdata answer]
+    (let [ahtdata (ht->tx-data wsdata answer)
 
           {:keys [db-after tempids]} (d/with db ahtdata)
           aht-tempid (d/resolve-tempid db-after tempids "htid")
@@ -442,72 +431,149 @@
              {:db/id  "datomic.tx"
               :tx/ws  wsid
               :tx/act "actid"}])]
-      (d/transact conn final-tx-data)))
+      final-tx-data))
 
-(defn show-ws [db]
-  (let [wsid (first (wss-to-show db))
-        ws-data (get-ws-data db wsid)
-        ws-str  (render-ws-data ws-data)]
-    (def test-wsid wsid)
-    (def test-ws-data ws-data)
-    [ws-data ws-str]))
+
+;;;; Single-user runner
+(def --Runner)
+
+;; Note: This is becoming ugly with transacts at all levels. But I think I can
+;; tidy it up when I'm working on the third milestone. Also, maybe I should
+;; abstract all the query stuff.
+
+(def last-shown-wsid (atom nil))
+
+;; TODO: Turn this into a function that returns data to be transacted by
+;; someone else, just like the rest of the core API. (RM 2019-01-10)
+(defn run-ask-root-question [conn agent question]
+  (let [ask-data
+        (concat
+          (ask (d/db conn) "wsid" {} question)
+
+          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
+           {:db/id         [:agent/handle agent]
+            :agent/root-ws "wsid"}])
+
+        {:keys [db-after tempids]}
+        @(d/transact conn ask-data)
+
+        wsid (d/resolve-tempid db-after tempids "wsid")
+
+        unlock-data
+        (unlock db-after wsid (get-ws-data db-after wsid) "sq.0.a")]
+    (d/transact conn unlock-data)))
+
+;; MAYBE TODO: Change the unlock, so that it goes through the same route as
+;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
+;; directly. For this I'd have to find or write a walker that gives me not
+;; just nodes, but also their paths. (RM 2019-01-10)
+(defn- pull-root-qa [conn wsid]
+  (let [db-at-start (d/db conn)
+        question (-> (get-ws-data db-at-start wsid)
+                     (get-in ["sq" "0" "q"])
+                     render-ht-data)]
+    (loop [db db-at-start]
+      (if (!get (d/entity db wsid) :ws/waiting-for)
+        [question :waiting]
+        (let [wsdata      (get-ws-data db wsid)
+              locked-pmap (s/select-first (s/walker :locked?) wsdata)]
+          (if (nil? locked-pmap) ; No locked pointers left.
+            [question (render-ht-data (get-in wsdata ["sq" "0" "a"]))]
+            (do @(d/transact conn
+                             (unlock-by-pointer-map
+                               db wsid locked-pmap (str locked-pmap)))
+                (recur (d/db conn)))))))))
+
+(defn pull-root-qas [conn agent]
+  (let [db (d/db conn)
+        finished-wsids
+           (d/q '[:find [?ws ...]
+                  :in $ ?handle
+                  :where
+                  [?a :agent/handle ?handle]
+                  [?a :agent/root-ws ?ws]
+                  (not [?ws :ws/waiting-for _])]
+                db agent)]
+    (map #(pull-root-qa conn %) finished-wsids)))
+
+(defn start-working [conn]
+  (let [db   (d/db conn)
+        wsid (first (wss-to-show db))]
+    (swap! last-shown-wsid (constantly wsid))
+    (render-ws-data (get-ws-data db wsid))))
+
+(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
+  (when trace?
+    (pprint/pprint command))
+  (let [cmd-fn (get {:ask ask :unlock unlock :reply reply} cmd)
+        wsid @last-shown-wsid
+        db (d/db conn)
+        tx-data (cmd-fn db wsid (get-ws-data db wsid) arg)
+
+        _ (d/transact conn tx-data)
+        db (d/db conn)
+        new-wsid (first (wss-to-show db))
+
+        _ (swap! last-shown-wsid (constantly new-wsid))
+
+        res (when new-wsid (render-ws-data (get-ws-data db new-wsid)))]
+    (when trace?
+      (pprint/pprint res))
+    res))
 
 
 (def --Comment)
 
 (comment
 
-  (do
-    (ask-root-question conn test-agent "What is the capital of [Texas]?")
+  ;;;; Scenario: Pointer 1
 
-    (show-ws (d/db conn))
+  ;; Challenges: Replying in a root workspace with a pointer to a yet ungiven
+  ;; sub-answer.
 
-    ;; Just for testing. Later the root question and the root ws must be separate.
-    (let [pid (q '[:find ?p .
-                   :in $ ?ws
-                   :where
-                   [?ws :ws/question ?q]
-                   [?q :hypertext/pointer ?p]]
-                 (d/db conn) test-wsid)]
-      (d/transact conn [{:db/id           pid
-                         :pointer/locked? true}])))
+  (set-up {:reset? true})
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-  (show-ws (d/db conn))
+  (start-working conn)
+  (run [:ask "What is the capital city of $q.0?"])
+  (run [:reply "Just $sq.0.a."])
 
-  (ask conn test-wsid test-ws-data "What is the capital city of $q.1?")
+  (pull-root-qas conn test-agent)
 
-  (show-ws (d/db conn))
+  (start-working conn)
+  (run [:reply "Austin. Keep it [weird]."])
 
-  (ask conn test-wsid test-ws-data "What do you think about $sq.0.a?")
+  (pull-root-qas conn test-agent)
 
-  (show-ws (d/db conn))
 
-  (unlock conn test-wsid test-ws-data "sq.1.a")
+  ;;;; Scenario: Pointer 2
 
-  (show-ws (d/db conn))
+  ;; Challenges: Asking a sub-question that contains a pointer to a yet ungiven
+  ;; answer to another sub-question.
 
-  (unlock conn test-wsid test-ws-data "q.0")
+  (set-up {:reset? true})
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-  (show-ws (d/db conn))
+  (start-working conn)
+  (doseq [command
+          [[:ask "What is the capital city of $q.0?"]
+           [:ask "What do you think about $sq.0.a?"]
+           [:unlock "sq.1.a"]
+           [:unlock "q.0"]
+           [:reply "Austin"]
+           [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
+           [:unlock "sq.1.a.0"]
+           [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
+    (run command {:trace? true})
+    (println))
 
-  (reply conn test-wsid test-ws-data "Austin")
-
-  (show-ws (d/db conn))
-
-  (reply conn test-wsid test-ws-data
-         "It's a nice city. Once I went to [Clojure/conj] there.")
-
-  (show-ws (d/db conn))
-
-  (unlock conn test-wsid test-ws-data "sq.1.a.0")
-
-  (show-ws (d/db conn))
+  (pull-root-qas conn test-agent)
 
 
   ;;;; Reflection – gas phase
 
-  ;; Find out what the user wants to do with reflection. Derive a small set
-  ;; of operations/available pointers etc. to enable that.
+  ;; Find out what the user wants to do with reflection. Derive a small set of
+  ;; operations/available pointers etc. to enable that.
 
 
   ;;;; Archive
