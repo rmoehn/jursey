@@ -311,12 +311,18 @@
 ;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;; alright.
 (defn ask [db wsid wsdata question]
-  (let [qhtdata (ht->txreq wsdata question)
+  (let [qht-txreq (ht->txreq wsdata question)
 
         {:keys [db-after tempids]}
-        (d/with db qhtdata)
+        (d/with db qht-txreq)
 
-        [ht-copy-tempid ht-copy-txreq]
+        ;; Note: Both when a question is asked and when an answer is given,
+        ;; two copies of it will be created: One to be stored in the current
+        ;; workspace and one with locked pointers to be stored in the child
+        ;; (for questions) or parent (for answers) workspace. In fact, when
+        ;; an answer is given, it will be copied for each pointer that points
+        ;; at it.
+        [qht-copy-tempid qht-copy-txreq]
         (cp-hypertext-txreq db-after
                               (d/resolve-tempid db-after tempids "htid"))
 
@@ -325,7 +331,7 @@
                   [{:db/id     wsid
                     :ws/sub-qa "qaid"}]
 
-                  qhtdata
+                  qht-txreq
                   [{:db/id       "qaid"
                     :qa/question "htid"
                     :qa/answer   "apid"}
@@ -333,9 +339,9 @@
                     :pointer/locked? true
                     :pointer/target  "sub-wsid"}]
 
-                  ht-copy-txreq
+                  qht-copy-txreq
                   [{:db/id       "sub-wsid"
-                    :ws/question ht-copy-tempid}
+                    :ws/question qht-copy-tempid}
 
                    {:db/id       "actid"
                     :act/command :act.command/ask
@@ -348,30 +354,30 @@
 (defn- unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
   (let [target (d/pull db '[*] target-id)
 
-        set-waiting-data
-               (if (get target :ws/question) ; Must be a pointer to an ungiven answer.
-                 [{:db/id          wsid
-                   :ws/waiting-for (get target :db/id)}]
-                 [])
+        set-waiting-txreq
+        (if (get target :ws/question) ; Must be a pointer to an ungiven answer.
+          [{:db/id          wsid
+            :ws/waiting-for (get target :db/id)}]
+          [])
 
         txreq
-               (concat
-                 set-waiting-data
+        (concat
+          set-waiting-txreq
 
-                 ;; Note: I can set the pointer to unlocked even if it's pointing to an
-                 ;; ungiven answer, because this workspace won't be rendered again
-                 ;; until the waiting-for is cleared. At that point the target will be
-                 ;; renderable. This way I don't have to find all the pointers with
-                 ;; pending unlock after the reply is given.
-                 [{:db/id           pid
-                   :pointer/locked? false}
+          ;; Note: I can set the pointer to unlocked even if it's pointing to an
+          ;; ungiven answer, because this workspace won't be rendered again
+          ;; until the waiting-for is cleared. At that point the target will be
+          ;; renderable. This way I don't have to find all the pointers with
+          ;; pending unlock after the reply is given.
+          [{:db/id           pid
+            :pointer/locked? false}
 
-                  {:db/id       "actid"
-                   :act/command :act.command/unlock
-                   :act/content pointer}
-                  {:db/id  "datomic.tx"
-                   :tx/ws  wsid
-                   :tx/act "actid"}])]
+           {:db/id       "actid"
+            :act/command :act.command/unlock
+            :act/content pointer}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
     txreq))
 
 ;; TODO: Check that the pointer is actually locked.
@@ -388,9 +394,9 @@
 ;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
 ;; 2019-01-08)
 (defn reply [db wsid wsdata answer]
-  (let [ahtdata (ht->txreq wsdata answer)
+  (let [aht-txreq (ht->txreq wsdata answer)
 
-        {:keys [db-after tempids]} (d/with db ahtdata)
+        {:keys [db-after tempids]} (d/with db aht-txreq)
         aht-tempid (d/resolve-tempid db-after tempids "htid")
 
         targeting-pids
@@ -400,6 +406,7 @@
                [?p :pointer/target ?wsid]]
              db wsid)
 
+        ;; Make a copy of the answer for each pointer that points at it.
         aht-copy-data
         (mapcat (fn [pid]
                   (let [[aht-copy-tempid aht-copy-txreq]
@@ -425,7 +432,7 @@
         (concat
           [{:db/id     wsid
             :ws/answer "htid"}]
-          ahtdata
+          aht-txreq
 
           aht-copy-data
           unwait-data
