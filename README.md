@@ -5,6 +5,20 @@ Limitations
   `[]$` in normal text. This is not a fundamental limitation and could be fixed
   within eight hours.
 
+
+Branches
+--------
+
+If you want to have a reliable branch (ie. no force-pushes), use `master`. If
+you want to see the newest changes or study history in detail, look at `dev`.
+
+I develop on branch `dev`, where I make many snapshot commits and to which I
+force-push sometimes. I then lump changes from `dev` together and apply them to
+`master`. The effect is that the commits on `dev` are too small and the commits
+on `master` are too big. None of them are ‘logically separate changesets’. This
+is the nature of prototyping.
+
+
 Use Datomic JAR with Leiningen
 ------------------------------
 
