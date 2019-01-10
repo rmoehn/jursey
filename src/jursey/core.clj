@@ -351,7 +351,7 @@
                     :tx/act "actid"}])]
     final-txreq))
 
-(defn- unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
+(defn- unlock-by-pmap [db wsid {target-id :target pid :id} pointer]
   (let [target (d/pull db '[*] target-id)
 
         set-waiting-txreq
@@ -382,7 +382,7 @@
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
-  (unlock-by-pointer-map db wsid (sget-in wsdata (->path pointer)) pointer))
+  (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -460,23 +460,26 @@
 
 ;; TODO: Turn this into a function that returns data to be transacted by
 ;; someone else, just like the rest of the core API. (RM 2019-01-10)
+;; Note: This frames the root question as the sub-question of a workspace
+;; without own question. Thus we can handle it almost like any other question.
 (defn run-ask-root-question [conn agent question]
-  (let [ask-data
-             (concat
-               (ask (d/db conn) "wsid" {} question)
+  (let [ask-txreq
+        (concat
+          (ask (d/db conn) "wsid" {} question)
 
-               [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
-                {:db/id         [:agent/handle agent]
-                 :agent/root-ws "wsid"}])
+          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
+           {:db/id         [:agent/handle agent]
+            :agent/root-ws "wsid"}])
 
         {:keys [db-after tempids]}
-        @(d/transact conn ask-data)
+        @(d/transact conn ask-txreq)
 
         wsid (d/resolve-tempid db-after tempids "wsid")
 
-        unlock-data
-             (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
-    (d/transact conn unlock-data)))
+        ;; Kick off processing by unlocking the answer to this root question.
+        unlock-txreq
+        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
+    (d/transact conn unlock-txreq)))
 
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
 ;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
@@ -495,20 +498,21 @@
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
-                             (unlock-by-pointer-map
+                             (unlock-by-pmap
                                db wsid locked-pmap (str locked-pmap)))
                 (recur (d/db conn)))))))))
 
 (defn get-root-qas [conn agent]
   (let [db (d/db conn)
+
         finished-wsids
-           (d/q '[:find [?ws ...]
-                  :in $ ?handle
-                  :where
-                  [?a :agent/handle ?handle]
-                  [?a :agent/root-ws ?ws]
-                  (not [?ws :ws/waiting-for _])]
-                db agent)]
+        (d/q '[:find [?ws ...]
+               :in $ ?handle
+               :where
+               [?a :agent/handle ?handle]
+               [?a :agent/root-ws ?ws]
+               (not [?ws :ws/waiting-for _])]
+             db agent)]
     (map #(get-root-qa conn %) finished-wsids)))
 
 (defn start-working [conn]
@@ -525,16 +529,16 @@
         db (d/db conn)
         txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
 
-        _ (d/transact conn txreq)
+        _ @(d/transact conn txreq)
         db (d/db conn)
         new-wsid (first (wss-to-show db))
 
         _ (swap! last-shown-wsid (constantly new-wsid))
 
-        res (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
+        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
     (when trace?
-      (pprint/pprint res))
-    res))
+      (pprint/pprint new-ws))
+    new-ws))
 
 
 (def --Comment)
