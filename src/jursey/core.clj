@@ -1,5 +1,4 @@
 (ns jursey.core
-  [:refer-clojure :rename {get !get get-in !get-in}]
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.stacktrace :as stacktrace]
@@ -11,7 +10,7 @@
             [such.imperfection :refer [-pprint-]]]
   [:use [plumbing.core
          :only [safe-get safe-get-in]
-         :rename {safe-get get safe-get-in get-in}]])
+         :rename {safe-get sget safe-get-in sget-in}]])
 ;; Also uses: datomic.Util
 
 ;; ht   … hypertext
@@ -77,18 +76,21 @@
        pointer  = #'%s'"
       pointer-re)))
 
-(defn ->path [pointer & relpath]
-  (into (string/split pointer #"\.") relpath))
+(defn ->path [pointer & relative-path]
+  (into (string/split pointer #"\.") relative-path))
 
 (defn process-pointer [wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
         path (->path pointer)]
     {:repr    dollar-pointer
      :pointer {:pointer/name    pointer
-               :pointer/locked? (get-in wsdata (conj path :locked?))
-               :pointer/target  (get-in wsdata (conj path :target))}}))
+               :pointer/locked? (sget-in wsdata (conj path :locked?))
+               :pointer/target  (sget-in wsdata (conj path :target))}}))
 
-(declare ht-tree->tx-data)
+;; Note: The Datomic docs say that it ‘represents transaction requests as
+;; data structures’. So I call such a data structures (list of
+;; lists or maps) a ‘transaction request’ its parts ‘transaction parts’.
+(declare process-httree)
 
 (defn tmp-htid
   "Return a temporary :db/id for the transaction map of a piece of hypertext."
@@ -99,33 +101,35 @@
 ;; TODO: Find a better name for wsdata and children-data.
 (defn process-embedded [wsdata loc children]
   (let [children-data (map-indexed (fn [i c]
-                                     (ht-tree->tx-data wsdata
-                                                       (conj loc i)
-                                                       c))
+                                     (process-httree wsdata
+                                                     (conj loc i)
+                                                     c))
                                    children)]
     {:repr    (str \$ (last loc))
      :pointer {:pointer/name    (str (last loc))
                :pointer/target  (tmp-htid loc)
                :pointer/locked? false}
-     :tx-data (conj
-                (apply concat (filter some? (map :tx-data children-data)))
-                {:db/id             (tmp-htid loc)
-                 :hypertext/content (apply str (map :repr children-data))
-                 :hypertext/pointer (filter some? (map :pointer children-data))})}))
+     :txreq (conj
+              (apply concat (filter some? (map :tx-data children-data)))
+              {:db/id             (tmp-htid loc)
+               :hypertext/content (apply str (map :repr children-data))
+               :hypertext/pointer (filter some? (map :pointer children-data))})}))
 
-(defn ht-tree->tx-data [wsdata loc [tag & children]]
+(defn process-httree [wsdata loc [tag & children]]
   "
-  `loc` is the location/path of the current element in the syntax tree."
+  `loc` is the location/path of the current element in the syntax tree.
+  ‘httree’ means the syntax tree that results from parsing hypertext."
   (case tag
     ;; :repr is the string that will be included in the parent hypertext.
     :text     {:repr (first children)}
     :pointer  (process-pointer wsdata (first children))
     :embedded (process-embedded wsdata loc children)))
 
-;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
-(defn ht->tx-data [wsdata ht]
-  (get (ht-tree->tx-data wsdata [] (assoc (parse-ht ht) 0 :embedded))
-       :tx-data))
+(defn ht->txreq [wsdata ht]
+  (let [;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
+        httree (replace {:S :embedded} (parse-ht ht))]
+    (-> (process-httree wsdata [] httree)
+        (sget :txreq))))
 
 
 ;;;; Rendering a workspace as a string
@@ -145,37 +149,37 @@
   [f s]
   (into {} (map-indexed (fn [i v] [(str i) (f v)]) s)))
 
-(defn render-ht-data [ht-data]
-  (let [name->ht-data (apply dissoc ht-data (filter keyword? (keys ht-data)))
-        pointer->text (into {} (map (fn [[name embedded-ht-data]]
+(defn render-htdata [htdata]
+  (let [name->htdata (apply dissoc htdata (filter keyword? (keys htdata)))
+        pointer->text (into {} (map (fn [[name embedded-htdata]]
                                       [(str \$ name)
-                                       (if (get embedded-ht-data :locked?)
+                                       (if (sget embedded-htdata :locked?)
                                          (str \$ name)
-                                         (format "[%s: %s]" name (render-ht-data embedded-ht-data)))])
-                                    name->ht-data))]
-    (replace-occurrences (get ht-data :text) pointer->text)))
+                                         (format "[%s: %s]" name (render-htdata embedded-htdata)))])
+                                    name->htdata))]
+    (replace-occurrences (sget htdata :text) pointer->text)))
 
 ;; Note: I wanted to name this get-ht-tree, but I already used ht-tree for the
 ;; syntax tree of a parsed hypertext.
-;; TODO: Turn get-in into sget-in and !get-in into get-in. (RM 2019-01-04)
-(defn get-ht-data [db id]
+;; TODO: Turn get-in into sget-in and get-in into get-in. (RM 2019-01-04)
+(defn pull-htdata [db id]
   (let [ht (d/pull db '[*] id)]
-    (into {:text    (get ht :hypertext/content)
+    (into {:text    (sget ht :hypertext/content)
            :target  id
            :locked? false}
           (map (fn [p]
-                 [(get p :pointer/name)
-                  (if (get p :pointer/locked?)
-                    {:id (get p :db/id)
+                 [(sget p :pointer/name)
+                  (if (sget p :pointer/locked?)
+                    {:id (sget p :db/id)
                      :locked? true
-                     :target  (!get-in p [:pointer/target :db/id])}
-                    (get-ht-data db (get-in p [:pointer/target :db/id])))])
-               (!get ht :hypertext/pointer [])))))
+                     :target  (get-in p [:pointer/target :db/id])}
+                    (pull-htdata db (sget-in p [:pointer/target :db/id])))])
+               (get ht :hypertext/pointer [])))))
 
 (defn get-sub-qa-data [db
                        {{q-htid :db/id} :qa/question
                         {apid :db/id}   :qa/answer}]
-  {"q" (get-ht-data db q-htid)
+  {"q" (pull-htdata db q-htid)
    "a" (let [{pid :db/id
               locked? :pointer/locked?
               {target :db/id} :pointer/target} (d/pull db '[*] apid)]
@@ -183,28 +187,28 @@
            {:id pid
             :locked? true
             :target target}
-           (get-ht-data db target)))})
+           (pull-htdata db target)))})
 
 (defn render-sub-qa-data [qa-data]
-  {"q" (render-ht-data (get qa-data "q"))
-   "a" (if (get-in qa-data ["a" :locked?])
+  {"q" (render-htdata (sget qa-data "q"))
+   "a" (if (sget-in qa-data ["a" :locked?])
          :locked
-         (render-ht-data (get qa-data "a")))})
+         (render-htdata (sget qa-data "a")))})
 
 (defn get-wsdata [db id]
   (let [pull-res  (d/pull db '[*] id)
-        wsdata {"q" (some->> (!get-in pull-res [:ws/question :db/id])
-                              (get-ht-data db))}]
-    (if-some [sq (!get pull-res :ws/sub-qa)]
+        wsdata {"q" (some->> (get-in pull-res [:ws/question :db/id])
+                             (pull-htdata db))}]
+    (if-some [sq (get pull-res :ws/sub-qa)]
       (assoc wsdata "sq" (str-idx-map #(get-sub-qa-data db %) sq))
       wsdata)))
 
 ;; TODO: Add sq only if there is a sub-question.
 (defn render-wsdata [wsdata]
-  {"q"  (render-ht-data (get wsdata "q"))
+  {"q"  (render-htdata (sget wsdata "q"))
    ;; TODO: Use map-vals here. (RM 2018-12-28)
    "sq" (into {} (map (fn [[k v]] [k (render-sub-qa-data v)])
-                      (!get wsdata "sq")))})
+                      (get wsdata "sq")))})
 
 
 ;;;; Copying hypertext
@@ -224,10 +228,10 @@
 
         new-target
         (cond
-          (some? (!get pull-res :hypertext/content))
+          (some? (get pull-res :hypertext/content))
           (pull-cp-hypertext-data db target-id)
 
-          (some? (!get pull-res :ws/question))
+          (some? (get pull-res :ws/question))
           target-id
 
           :else (throw (ex-info "Don't know how to handle this pointer target."
@@ -243,7 +247,7 @@
 ;; pointer gets its own copy. Implementing that would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
 ;; TODO: Find some sensible semantics/way to deal with get and friends.
-;; – The current semantics is like Python with get = __getitem__ and !get =
+;; – The current semantics is like Python with get = __getitem__ and get =
 ;; get. This is quite okay. I just have to find better names, I guess. (RM
 ;; 2019-01-04)
 ;; Note: For now I don't worry about tail recursion and things like that.
@@ -252,18 +256,18 @@
         (d/pull db '[*] id)
 
         old->new-pointer
-        (into {} (map-indexed #(vector (get %2 :pointer/name) (str %1))
-                              (!get pull-res :hypertext/pointer)))
+        (into {} (map-indexed #(vector (sget %2 :pointer/name) (str %1))
+                              (get pull-res :hypertext/pointer)))
 
         sub-ress
-        (mapv #(pull-cp-pointer-data db % (get old->new-pointer
-                                               (get % :pointer/name)))
-              (!get pull-res :hypertext/pointer []))]
+        (mapv #(pull-cp-pointer-data db % (sget old->new-pointer
+                                               (sget % :pointer/name)))
+              (get pull-res :hypertext/pointer []))]
     (-> pull-res
         (dissoc :db/id)
         (assoc :hypertext/pointer sub-ress)
         (assoc :hypertext/content
-               (replace-occurrences (get pull-res :hypertext/content)
+               (replace-occurrences (sget pull-res :hypertext/content)
                                     (map-keys-vals #(str \$ %) old->new-pointer))))))
 
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
@@ -292,18 +296,18 @@
   questions."
   [db]
   (d/q '[:find [?ws ...]
-       :where
-       [_ :ws/waiting-for ?ws]
-       (not [_ :agent/root-ws ?ws])
-       (not [?ws :ws/waiting-for _])]
-     db))
+         :where
+         [_ :ws/waiting-for ?ws]
+         (not [_ :agent/root-ws ?ws])
+         (not [?ws :ws/waiting-for _])]
+       db))
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
 ;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;; alright.
 (defn ask [db wsid wsdata question]
-  (let [qhtdata (ht->tx-data wsdata question)
+  (let [qhtdata (ht->txreq wsdata question)
 
         {:keys [db-after tempids]}
         (d/with db qhtdata)
@@ -313,62 +317,62 @@
                               (d/resolve-tempid db-after tempids "htid"))
 
         final-tx-data
-        (concat
-          [{:db/id     wsid
-            :ws/sub-qa "qaid"}]
+                (concat
+                  [{:db/id     wsid
+                    :ws/sub-qa "qaid"}]
 
-          qhtdata
-          [{:db/id       "qaid"
-            :qa/question "htid"
-            :qa/answer   "apid"}
-           {:db/id           "apid"
-            :pointer/locked? true
-            :pointer/target  "sub-wsid"}]
+                  qhtdata
+                  [{:db/id       "qaid"
+                    :qa/question "htid"
+                    :qa/answer   "apid"}
+                   {:db/id           "apid"
+                    :pointer/locked? true
+                    :pointer/target  "sub-wsid"}]
 
-          ht-copy-tx-data
-          [{:db/id       "sub-wsid"
-            :ws/question ht-copy-tempid}
+                  ht-copy-tx-data
+                  [{:db/id       "sub-wsid"
+                    :ws/question ht-copy-tempid}
 
-           {:db/id       "actid"
-            :act/command :act.command/ask
-            :act/content question}
-           {:db/id  "datomic.tx"
-            :tx/ws  wsid
-            :tx/act "actid"}])]
+                   {:db/id       "actid"
+                    :act/command :act.command/ask
+                    :act/content question}
+                   {:db/id  "datomic.tx"
+                    :tx/ws  wsid
+                    :tx/act "actid"}])]
     final-tx-data))
 
 (defn- unlock-by-pointer-map [db wsid {target-id :target pid :id} pointer]
   (let [target (d/pull db '[*] target-id)
 
         set-waiting-data
-        (if (!get target :ws/question) ; Must be a pointer to an ungiven answer.
-          [{:db/id          wsid
-            :ws/waiting-for (!get target :db/id)}]
-          [])
+               (if (get target :ws/question) ; Must be a pointer to an ungiven answer.
+                 [{:db/id          wsid
+                   :ws/waiting-for (get target :db/id)}]
+                 [])
 
         tx-data
-        (concat
-          set-waiting-data
+               (concat
+                 set-waiting-data
 
-          ;; Note: I can set the pointer to unlocked even if it's pointing to an
-          ;; ungiven answer, because this workspace won't be rendered again
-          ;; until the waiting-for is cleared. At that point the target will be
-          ;; renderable. This way I don't have to find all the pointers with
-          ;; pending unlock after the reply is given.
-          [{:db/id           pid
-            :pointer/locked? false}
+                 ;; Note: I can set the pointer to unlocked even if it's pointing to an
+                 ;; ungiven answer, because this workspace won't be rendered again
+                 ;; until the waiting-for is cleared. At that point the target will be
+                 ;; renderable. This way I don't have to find all the pointers with
+                 ;; pending unlock after the reply is given.
+                 [{:db/id           pid
+                   :pointer/locked? false}
 
-           {:db/id       "actid"
-            :act/command :act.command/unlock
-            :act/content pointer}
-           {:db/id  "datomic.tx"
-            :tx/ws  wsid
-            :tx/act "actid"}])]
+                  {:db/id       "actid"
+                   :act/command :act.command/unlock
+                   :act/content pointer}
+                  {:db/id  "datomic.tx"
+                   :tx/ws  wsid
+                   :tx/act "actid"}])]
     tx-data))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
-  (unlock-by-pointer-map db wsid (get-in wsdata (->path pointer)) pointer))
+  (unlock-by-pointer-map db wsid (sget-in wsdata (->path pointer)) pointer))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -380,55 +384,55 @@
 ;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
 ;; 2019-01-08)
 (defn reply [db wsid wsdata answer]
-    (let [ahtdata (ht->tx-data wsdata answer)
+  (let [ahtdata (ht->txreq wsdata answer)
 
-          {:keys [db-after tempids]} (d/with db ahtdata)
-          aht-tempid (d/resolve-tempid db-after tempids "htid")
+        {:keys [db-after tempids]} (d/with db ahtdata)
+        aht-tempid (d/resolve-tempid db-after tempids "htid")
 
-          targeting-pids
-          (d/q '[:find [?p ...]
-                 :in $ ?wsid
-                 :where
-                 [?p :pointer/target ?wsid]]
-               db wsid)
+        targeting-pids
+        (d/q '[:find [?p ...]
+               :in $ ?wsid
+               :where
+               [?p :pointer/target ?wsid]]
+             db wsid)
+
+        aht-copy-data
+        (mapcat (fn [pid]
+                  (let [[aht-copy-tempid aht-copy-tx-data]
+                        (cp-hypertext-tx-data db-after aht-tempid)]
+                    (conj
+                      aht-copy-tx-data
+                      {:db/id          pid
+                       :pointer/target aht-copy-tempid})))
+                targeting-pids)
+
+        ;; TODO: Make sure that if it's waiting for multiple wss, only the
+        ;; current one is removed. I'm not sure about the semantics of
+        ;; retract. (RM 2019-01-08)
+        unwait-data
+        (map (fn [waiting-wsid]
+               [:db/retract waiting-wsid :ws/waiting-for wsid])
+             (d/q '[:find [?waiting-ws ...]
+                    :in $ ?this-ws
+                    :where [?waiting-ws :ws/waiting-for ?this-ws]]
+                  db wsid))
+
+        final-tx-data
+        (concat
+          [{:db/id     wsid
+            :ws/answer "htid"}]
+          ahtdata
 
           aht-copy-data
-          (mapcat (fn [pid]
-                    (let [[aht-copy-tempid aht-copy-tx-data]
-                          (cp-hypertext-tx-data db-after aht-tempid)]
-                      (conj
-                        aht-copy-tx-data
-                        {:db/id          pid
-                         :pointer/target aht-copy-tempid})))
-                  targeting-pids)
-
-          ;; TODO: Make sure that if it's waiting for multiple wss, only the
-          ;; current one is removed. I'm not sure about the semantics of
-          ;; retract. (RM 2019-01-08)
           unwait-data
-          (map (fn [waiting-wsid]
-                 [:db/retract waiting-wsid :ws/waiting-for wsid])
-               (d/q '[:find [?waiting-ws ...]
-                      :in $ ?this-ws
-                      :where [?waiting-ws :ws/waiting-for ?this-ws]]
-                    db wsid))
 
-          final-tx-data
-          (concat
-            [{:db/id     wsid
-              :ws/answer "htid"}]
-            ahtdata
-
-            aht-copy-data
-            unwait-data
-
-            [{:db/id       "actid"
-              :act/command :act.command/ask
-              :act/content answer}
-             {:db/id  "datomic.tx"
-              :tx/ws  wsid
-              :tx/act "actid"}])]
-      final-tx-data))
+          [{:db/id       "actid"
+            :act/command :act.command/ask
+            :act/content answer}
+           {:db/id  "datomic.tx"
+            :tx/ws  wsid
+            :tx/act "actid"}])]
+    final-tx-data))
 
 
 ;;;; Single-user runner
@@ -444,12 +448,12 @@
 ;; someone else, just like the rest of the core API. (RM 2019-01-10)
 (defn run-ask-root-question [conn agent question]
   (let [ask-data
-        (concat
-          (ask (d/db conn) "wsid" {} question)
+             (concat
+               (ask (d/db conn) "wsid" {} question)
 
-          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
-           {:db/id         [:agent/handle agent]
-            :agent/root-ws "wsid"}])
+               [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
+                {:db/id         [:agent/handle agent]
+                 :agent/root-ws "wsid"}])
 
         {:keys [db-after tempids]}
         @(d/transact conn ask-data)
@@ -457,7 +461,7 @@
         wsid (d/resolve-tempid db-after tempids "wsid")
 
         unlock-data
-        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
+             (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-data)))
 
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
@@ -467,15 +471,15 @@
 (defn- pull-root-qa [conn wsid]
   (let [db-at-start (d/db conn)
         question (-> (get-wsdata db-at-start wsid)
-                     (get-in ["sq" "0" "q"])
-                     render-ht-data)]
+                     (sget-in ["sq" "0" "q"])
+                     render-htdata)]
     (loop [db db-at-start]
-      (if (!get (d/entity db wsid) :ws/waiting-for)
+      (if (get (d/entity db wsid) :ws/waiting-for)
         [question :waiting]
         (let [wsdata      (get-wsdata db wsid)
               locked-pmap (s/select-first (s/walker :locked?) wsdata)]
           (if (nil? locked-pmap) ; No locked pointers left.
-            [question (render-ht-data (get-in wsdata ["sq" "0" "a"]))]
+            [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
                              (unlock-by-pointer-map
                                db wsid locked-pmap (str locked-pmap)))
@@ -502,7 +506,7 @@
 (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
   (when trace?
     (pprint/pprint command))
-  (let [cmd-fn (get {:ask ask :unlock unlock :reply reply} cmd)
+  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
         wsid @last-shown-wsid
         db (d/db conn)
         tx-data (cmd-fn db wsid (get-wsdata db wsid) arg)
@@ -584,7 +588,7 @@
               "a" :locked}
          "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-)
+  )
 
 (def --Tools)
 
