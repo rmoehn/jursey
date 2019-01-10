@@ -224,19 +224,19 @@
                             {{target-id :db/id} :pointer/target}
                             new-name]
   ;; TODO: Test whether it actually retains the target. (RM 2019-01-07)
-  (let [pull-res
+  (let [target
         (d/pull db '[*] target-id)
 
         new-target
         (cond
-          (some? (get pull-res :hypertext/content))
+          (some? (get target :hypertext/content))
           (get-cp-hypertext-data db target-id)
 
-          (some? (get pull-res :ws/question))
+          (some? (get target :ws/question))
           target-id
 
           :else (throw (ex-info "Don't know how to handle this pointer target."
-                                {:target pull-res})))]
+                                {:target target})))]
     {:pointer/name new-name
      :pointer/target new-target
      :pointer/locked? true}))
@@ -253,22 +253,22 @@
 ;; 2019-01-04)
 ;; Note: For now I don't worry about tail recursion and things like that.
 (defn get-cp-hypertext-data [db id]
-  (let [pull-res
+  (let [htdata
         (d/pull db '[*] id)
 
         old->new-pointer
         (into {} (map-indexed #(vector (sget %2 :pointer/name) (str %1))
-                              (get pull-res :hypertext/pointer)))
+                              (get htdata :hypertext/pointer)))
 
         sub-ress
         (mapv #(get-cp-pointer-data db % (sget old->new-pointer
                                                (sget % :pointer/name)))
-              (get pull-res :hypertext/pointer []))]
-    (-> pull-res
+              (get htdata :hypertext/pointer []))]
+    (-> htdata
         (dissoc :db/id)
         (assoc :hypertext/pointer sub-ress)
         (assoc :hypertext/content
-               (replace-substrings (sget pull-res :hypertext/content)
+               (replace-substrings (sget htdata :hypertext/content)
                                    (map-keys-vals #(str \$ %) old->new-pointer))))))
 
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
