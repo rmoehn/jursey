@@ -597,6 +597,19 @@
   (get-root-qas conn test-agent)
 
 
+  ;;;; Scenario: Pointer laundering
+
+  (set-up {:reset? true})
+  (run-ask-root-question conn test-agent "How about [bla]?")
+
+  (start-working conn)
+  (run [:ask "What do you think about $q.0?"])
+  (run [:unlock "q.0"])
+  (run [:unlock "sq.0.a"])
+  (run [:reply "I think $q.0."])
+  (run [:unlock "sq.0.a.0"])
+
+
   ;; TODO tests:
   ;; - Asking or replying [with [nested] hypertext].
   ;; - Pointing to nested hypertext ($sq.0.0).

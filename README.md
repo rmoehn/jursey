@@ -51,6 +51,13 @@ JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/
 ```
 
 
+Design
+------
+
+- Copying hypertext makes equality test for nested structures more complex.
+  With persistent data structures one could just test identity.
+
+
 References
 ----------
 
