@@ -1,0 +1,188 @@
+[:root "What is the capital of [Texas]?"]
+
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:ask "What is the capital city of $q.0?"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r :locked}
+
+[:unlock "sq.0.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+{:q "What is the capital city of $0?"
+ :sq {}
+ :r :locked}
+
+[:unlock "q.0"]
+
+{:q "What is the capital city of [0: Texas]?"
+ :sq {}
+ :r :locked}
+
+[:ask "Who was the father of $q.0?"]
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {"0" {:q "Who was the father of $q.0?"
+           :a :locked}}
+ :r  :locked}
+
+[:unlock "q.0.a"]
+
+;;;; ▶️ BEGIN In grandchild workspace
+
+{:q "Who was the father of $1?"
+ :r :locked}
+
+[:unlock "r"]
+
+{:q "Who was the father of $1?"
+ :r {:parent :locked
+     :max-v 1}}
+
+[:unlock "r.parent"]
+
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v 2}
+     :max-v 2}}
+
+[:unlock "r.parent.2"]
+
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  2
+              "2"     {:q   "What is the capital city of [0: Texas]?"
+                       :sq  {"0" {:q "Who was the father of $q.0?"
+                                  :a :locked}}
+                       :r   :locked
+                       :act :locked}}
+     :max-v  3}}
+;; This appears to make more sense. But now I have to change the schema, I
+;; guess.
+
+[:reply "Stephen F. Austin"]
+
+;;;; ⏹ END In grandchild workspace.
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {"0" {:q "Who was the father of $q.0?"
+           :a "Stephen F. Austin"}}
+ :r  :locked}
+
+[:unlock "r"]
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {"0" {:q "Who was the father of $q.0?"
+           :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  4}}
+
+[:unlock "r.3"]
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {"0" {:q "Who was the father of $q.0?"
+           :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  5
+      "3"     {:q   "What is the capital city of [0: Texas]?"
+               :sq  {"0" {:q     "Who was the father of $q.0?"
+                          :a     "Stephen F. Austin"
+                          :child :locked}}
+               :r   :locked
+               :act :locked}}}
+
+[:unlock "r.3.sq.0.child"]
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {:q "Who was the father of $q.0?"
+      :a "Stephen F. Austin"}
+ :r  {:parent :locked
+      :max-v  6
+      "3"     {:q   "What is the capital city of [0: Texas]?"
+               :sq  {"0" {:q     "Who was the father of $q.0?"
+                          :a     "Stephen F. Austin"
+                          :child {:parent :locked
+                                  :max-v  3}}}
+               :r   :locked
+               :act :locked}}}
+
+[:unlock "r.3.sq.0.child.3"]
+
+;; Now is the point where I need to see that the stuff in the child was unlocked
+;; in the child and the stuff around was unlocked around. Trying :rlevel. An
+;; :rlevel -1 means that that reflected thing wasn't unlocked from this
+;; workspace, but from the one being reflected. :rlevel 0 is implied.
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {:q "Who was the father of $q.0?"
+      :a "Stephen F. Austin"}
+ :r  {:parent :locked
+      :max-v  7
+      "3"     {:q   "What is the capital city of [0: Texas]?"
+               :sq  {"0" {:q     "Who was the father of $q.0?"
+                          :a     "Stephen F. Austin"
+                          :child {:parent :locked
+                                  :max-v  3
+                                  "3" {:q "Who was the father of $1?"
+                                       :r {:parent {:parent :locked
+                                                    :max-v  2
+                                                    "2"     {:q   "What is the capital city of [0: Texas]?"
+                                                             :sq  {"0" {:q "Who was the father of $q.0?"
+                                                                        :a :locked}}
+                                                             :r   :locked
+                                                             :act :locked
+                                                             :rlevel -1}
+                                                    :rlevel -1}
+                                           :max-v  3}
+                                       :act :locked}}}}
+               :r   :locked
+               :act :locked}}}
+
+[:unlock "r.3.sq.0.child.3.r.parent.2.act"]
+
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {:q "Who was the father of $q.0?"
+      :a "Stephen F. Austin"}
+ :r  {:parent :locked
+      :max-v  8
+      "3"     {:q   "What is the capital city of [0: Texas]?"
+               :sq  {"0" {:q     "Who was the father of $q.0?"
+                          :a     "Stephen F. Austin"
+                          :child {:parent :locked
+                                  :max-v  3
+                                  "3" {:q "Who was the father of $1?"
+                                       :r {:parent {:parent :locked
+                                                    :max-v  2
+                                                    "2"     {:q   "What is the capital city of [0: Texas]?"
+                                                             :sq  {"0" {:q "Who was the father of $q.0?"
+                                                                        :a :locked}}
+                                                             :r   :locked
+                                                             :act {:command :unlock
+                                                                   :content "q.0.a"}
+                                                             :rlevel -1}
+                                                    :rlevel -1}
+                                           :max-v  3}
+                                       :act :locked}}}}
+               :r   :locked
+               :act :locked}}}
+
+;; Note that the :act is :rlevel 0, because it was unlocked from the current
+;; workspace. There is an implementation problem, though: We render the
+;; workspace using the union of the outer and the inner reflection structure.
+;; The outer reflection structure needs to say that that :act is unlocked. But
+;; the outer reflection structure doesn't go down to the parent of the :act,
+;; because the inner structure is already there. We can't hang the ":act
+;; unlocked" information on the inner structure, though, because we can't modify
+;; the inner structure. So we have to fill the gap in the outer structure, but
+;; when rendering still indicate (by :rlevel) that the inner structure was
+;; already there. Could just render the outer one and then overwrite with the
+;; rendered inner one.
+
+;; This is getting hard. Is there an easier way to do it? This whole :rlevel
+;; stuff is rather arcane. Reflection of reflection is by itself arcane and
+;; wouldn't occur much, I guess.

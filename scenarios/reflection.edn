@@ -1,0 +1,103 @@
+[:root "What is the capital of [Texas]?"]
+
+{:q  "What is the capital of $0?"
+ :sq {}}
+
+[:ask "What is the capital city of $q.0?"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}}
+
+[:unlock "sq.0.a"]
+
+;;;; BEGIN In child workspace
+
+{:q "What is the capital city of $0?"
+ :sq {}}
+
+[:unlock "q.0"]
+
+{:q "What is the capital city of [0: Texas]?"
+ :sq {}}
+
+[:reply "Austin"]
+
+;;;; END In child workspace
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}}
+
+[:reflect]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :pred :locked
+ :act :locked}
+
+[:unlock :pred]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :pred {:q  "What is the capital of $0?"
+        :sq {0 {:q "What is the capital city of $q.0?"
+                :a :locked
+                :child :locked}}
+        :pred :locked
+        :act :locked}
+ :act :locked}
+
+;; Now of course this new workspace has a predecessor as well. I have to take
+;; care of it somehow. – Every action has to be reflectable. Do I have to
+;; define something recursively?
+
+[:unlock "pred.sq.0.child"]
+
+;; This is interesting. Which state of the child do we end up in? Before or
+;; after the unlock?
+;; - Before! The user hasn't unlocked "sq.0.a" yet, so no work has been done
+;;   on the child workspace yet.
+;; - But then if we work
+;; If it's the state at the time of running :reflect, it is
+;; not deterministic in a multi-user system.
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :pred {:q  "What is the capital of $0?"
+        :sq {0 {:q "What is the capital city of $q.0?"
+                :a :locked
+                :child {:q "What is the capital city of $0?"
+                        :sq {}
+                        :act :locked
+                        :succ :locked}}}
+        :pred :locked
+        :act :locked}
+ :act :locked}
+
+[:unlock "pred.sq.0.child.succ"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :pred {:q  "What is the capital of $0?"
+        :sq {0 {:q "What is the capital city of $q.0?"
+                :a :locked
+                :child {:q "What is the capital city of $0?"
+                        :sq {}
+                        :act :locked
+                        :succ {:q "What is the capital city of [0: Texas]?"
+                               :sq {}}}}}
+        :pred :locked
+        :act :locked}
+ :act :locked}
+
+;; I guess it would be good to have separate trees for different points in time.
+
+;; But then how do we do it? If we unlock a previous version of a distant
+;; thing, does it the whole new tree from here to there at that time? Or does
+;; it only give me that thing at that time? If the latter, how do I know
+;; where it belonged?
