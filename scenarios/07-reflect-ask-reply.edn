@@ -1,0 +1,279 @@
+[:root "What is the capital of [Texas]?"]
+
+P0
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:ask "What is the capital city of $q.0?"]
+
+P1
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r :locked}
+
+[:unlock "sq.0.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+C0
+{:q "What is the capital city of $0?"
+ :sq {}
+ :r :locked}
+
+[:reply "Niniveh"]
+
+;;;; ⏹ END In child workspace.
+
+P2
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}}
+ :r :locked}
+
+[:unlock "r"]
+
+P3
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}}
+ :r {:parent :locked
+     :max-v 3}}
+
+[:unlock "r.2"]
+
+P4
+{:q "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}}
+ :r {:parent :locked
+     :max-v 4
+     2 {:ws {:q "What is the capital of $0?"
+             :sq {0 {:q "What is the capital city of $q.0?"
+                     :a "Niniveh"}}
+             :r :locked}
+        :act [:unlock "r"]
+        :children {0 :locked}}}}
+;; This makes me think that it should be possible to unlock a child more
+;; easily and without seeing so much other stuff. That's easy to change
+;; later, though, so let's keep it simple for now.
+
+[:ask "Did $r.2.children.0 unlock the pointer in its question?"]
+
+P5
+{:q "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}
+      1 {:q "Did $r.2.children.0 unlock the pointer in its question?"
+         :a :locked}}
+ :r {:parent :locked
+     :max-v 5
+     2 {:ws {:q "What is the capital of $0?"
+             :sq {0 {:q "What is the capital city of $q.0?"
+                     :a "Niniveh"}}
+             :r :locked}
+        :act [:unlock "r"]
+        :children {0 :locked}}}}
+
+[:unlock "sq.1.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+{:q "Did $1 unlock the pointer in its question?"
+ :sq {}
+ :r :locked}
+
+[:unlock "q.1"]
+
+{:q "Did [1:
+{:parent :locked
+ :max-v 0}
+] unlock the pointer in its question?"
+ :sq {}
+ :r :locked}
+
+[:unlock "q.1.0"]
+
+{:q "Did [1:
+{:parent :locked
+ :max-v 0
+ 0 {:ws {:q “What is the capital city of $0?”
+         :sq {}
+         :r :locked}
+    :act [:reply “Nineveh”]
+    :children []}}
+] unlock the pointer in its question?"
+ :sq {}
+ :r :locked}
+
+[:reply "No, it didn't."]
+
+;;;; ⏹ END In child workspace.
+
+{:q "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}
+      1 {:q "Did $r.2.children.0 unlock the pointer in its question?"
+         :a "No, it didn't."}}
+ :r {:parent :locked
+     :max-v 6
+     2 {:ws {:q "What is the capital of $0?"
+             :sq {0 {:q "What is the capital city of $q.0?"
+                     :a "Niniveh"}}
+             :r :locked}
+        :act [:unlock "r"]
+        :children {0 :locked}}}}
+
+[:ask "What is the capital city of q.0? Make sure to unlock the pointer."]
+
+;; Leaving out the reflection part, because I don't need it for the rest of
+;; this scenario.
+
+{:q "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}
+      1 {:q "Did $r.2.children.0 unlock the pointer in its question?"
+         :a "No, it didn't."}
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a :locked}}
+ :r [...]}
+
+[:unlock "sq.2.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+C2.0
+{:q "What is the capital city of q.0? Make sure to unlock the pointer."
+ :sq {}
+ :r :locked}
+
+[:unlock "r"]
+
+C2.1
+{:q "What is the capital city of q.0? Make sure to unlock the pointer."
+ :sq {}
+ :r {:parent :locked
+     :max-v 1}}
+
+[:reply "There is no pointer. See: $r.0 Did you forget to write a dollar sign?"]
+
+;;;; ⏹ END In child workspace.
+
+{:q "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Niniveh"}
+      1 {:q "Did $r.2.children.0 unlock the pointer in its question?"
+         :a "No, it didn't."}
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a "There is no pointer. See: $1 Did you forget to write a dollar sign?"}}
+ :r [...]}
+
+[:unlock "sq.2.a.1"]
+
+;; Leaving out the two first sub-questions for brevity.
+
+{:q "What is the capital of $0?"
+ :sq {0 ... 1 ...
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a "There is no pointer. See: [1:
+{:parent :locked
+ :max-v 1
+ 0 {:ws {:q “What is the capital city of q.0? Make sure to unlock the pointer.”
+    :sq {}
+    :r :locked}
+    :act [:unlock “r”]
+    :children {}}}
+] Did you forget to write a dollar sign?"}}
+ :r [...]}
+
+;; Now pointer laundering, unrelated to the story of this scenario.
+
+[:ask "Give me this pointer unchanged: $sq.2.a.1.0.r"]
+
+{:q "What is the capital of $0?"
+ :sq {0 ... 1 ...
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a "There is no pointer. See: [1:
+{:parent :locked
+ :max-v 1
+ 0 {:ws {:q “What is the capital city of q.0? Make sure to unlock the pointer.”
+    :sq {}
+    :r :locked}
+    :act [:unlock “r”]
+    :children {}}}
+] Did you forget to write a dollar sign?"}
+      3 {:q "Give me this pointer unchanged: $sq.2.a.1.0.r"
+         :a :locked}}
+ :r [...]}
+
+[:unlock "sq.3.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+{:q "Give me this pointer unchanged: $1"
+ :sq {}
+ :r :locked}
+
+[:reply "$q.1"]
+
+;;;; ⏹ END In child workspace.
+
+{:q "What is the capital of $0?"
+ :sq {0 ... 1 ...
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a "There is no pointer. See: [1:
+{:parent :locked
+ :max-v 1
+ 0 {:ws {:q “What is the capital city of q.0? Make sure to unlock the pointer.”
+    :sq {}
+    :r :locked}
+    :act [:unlock “r”]
+    :children {}}}
+] Did you forget to write a dollar sign?"}
+      3 {:q "Give me this pointer unchanged: $sq.2.a.1.0.r"
+         :a "$0"}}
+ :r [...]}
+
+[:unlock "sq.3.a.0"]
+
+{:q "What is the capital of $0?"
+ :sq {0 ... 1 ...
+      2 {:q "What is the capital city of q.0? Make sure to unlock the pointer."
+         :a "There is no pointer. See: [1:
+{:parent :locked
+ :max-v 1
+ 0 {:ws {:q “What is the capital city of q.0? Make sure to unlock the pointer.”
+    :sq {}
+    :r :locked}
+    :act [:unlock “r”]
+    :children {}}}
+] Did you forget to write a dollar sign?"}
+      3 {:q "Give me this pointer unchanged: $sq.2.a.1.0.r"
+         :a "[0:
+{:parent :locked
+ :max-v 0}
+]"}}
+ :r [...]}
+;; Should :max-v be 0 or 1 in this? If I had unlocked "r" at the time that is
+;; reflected, its :max-v would have been 0. However, the reflection structure
+;; doesn's store such information. In fact, at that time, the workspace
+;; didn't even have a value for its :ws/reflection attribute (otherwise the
+;; "r" entry would have been rendered unlocked). So when it makes the
+;; pointer, it has to fabricate a reflection structure. It doesn't appear
+;; unlocked, becauser :pointer/locked? true. This is a bit ugly.
+;; All in all the question is: Can we reach from the laundered r everything
+;; that was reachable at the time or everything that is reachable now?
+;; Everything that was reachable at the time makes more sense theoretically.
+;; But is it implementable at all?
+;;
+;; When I first ask the laundering question and pass the "r" pointer, I have to
+;; fabricate the reflection structure. At that point I know the transaction
+;; time of "r"'s workspace. So I could put that transaction time in the
+;; pointer structure and write the rest of the code in a way that it doesn't
+;; go beyond that transaction time. But then there is a discrepancy. If I
+;; ordinarily unlock a workspace's "r", the "r" doesn't retain the
+;; transaction time. In fact, it updates itself every time the workspace is
+;; updated. So we could say that from an "r" we can reach anything that
+;; happened up to its :reflection/ws's last transaction time. I think it
+;; makes sense.

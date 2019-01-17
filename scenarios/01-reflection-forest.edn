@@ -1,0 +1,96 @@
+[:root "What is the capital of [Texas]?"]
+
+{:q  "What is the capital of $0?"
+ :sq {}}
+
+[:ask "What is the capital city of $q.0?"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}}
+
+[:unlock "sq.0.a"]
+
+;;;; BEGIN In child workspace
+
+{:q "What is the capital city of $0?"
+ :sq {}}
+
+[:unlock "q.0"]
+
+{:q "What is the capital city of [0: Texas]?"
+ :sq {}}
+
+[:reply "Austin"]
+
+;;;; END In child workspace
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}}
+
+[:reflect]
+
+{-1 :locked
+
+ 0 {:q  "What is the capital of $0?"
+    :sq {0 {:q "What is the capital city of $q.0?"
+            :a "Austin"}}}}
+
+[:unlock -1]
+
+{-3 :locked
+ -2 {:q  "What is the capital of $0?"
+     :sq {0 {:q "What is the capital city of $q.0?"
+             :a "Austin"}}}
+ -1 :locked
+ 0 {:q  "What is the capital of $0?"
+    :sq {0 {:q "What is the capital city of $q.0?"
+            :a "Austin"}}}}
+
+[:unlock -3]
+
+;; Of course I also need to put the actions somewhere.
+
+;; With a GUI I could navigate prev, prev, prev and close all but the current
+;; reflected workspace. And I might not have to deal with numbering.
+
+{-5 :locked
+ -4 {:q  "What is the capital of $0?"
+     :sq {0 {:q "What is the capital city of $q.0?"
+             :a :locked
+             :child :locked}}}
+ -3 {:q  "What is the capital of $0?"
+     :sq {0 {:q "What is the capital city of $q.0?"
+             :a "Austin"}}}
+ -1 :locked
+ 0 {:q  "What is the capital of $0?"
+    :sq {0 {:q "What is the capital city of $q.0?"
+            :a "Austin"}}}}
+
+[:unlock "-4.sq.0.child"]
+
+{-6 :locked
+ -5 {:q  "What is the capital of $0?"
+     :sq {0 {:q "What is the capital city of $q.0?"
+             :a :locked
+             :child {:q "What is the capital city of $0?"
+                     :sq {}}}}}
+ -4 …
+ -1 :locked
+ 0 {:q  "What is the capital of $0?"
+    :sq {0 {:q "What is the capital city of $q.0?"
+            :a "Austin"}}}}
+
+;; Now what do I do? I counted the transformations of the outer workspace,
+;; but not those of the inner workspace. Maybe.
+
+;; I could have a global numbering where counters increase with every
+;; modification of the whole tree. Or I could have a local numbering where
+;; counters increase with every modification of a workspace.
+
+;; Also, if I want to store all that stuff in the DB without sharing – just
+;; copies/snapshots, is it exponential space?
+;; No, because we wouldn't make copies of reflected things, because their
+;; pointers have to have the same locked/unlocked state as in the original
+;; anyway.

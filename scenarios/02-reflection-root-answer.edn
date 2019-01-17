@@ -1,0 +1,111 @@
+[:root "What is the capital of [Texas]?"]
+
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:ask "What is the capital city of $q.0?"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r :locked}
+
+[:unlock "sq.0.a"]
+
+;;;; BEGIN In child workspace
+
+{:q "What is the capital city of $0?"
+ :sq {}
+ :r :locked}
+
+[:unlock "q.0"]
+
+{:q "What is the capital city of [0: Texas]?"
+ :sq {}
+ :r :locked}
+
+[:reply "Austin"]
+
+;;;; END In child workspace
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r :locked}
+
+
+[:unlock "r"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 3}}
+
+[:unlock "r.2"]
+;; Versions start at 0.
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 4
+     "2" {:q  "What is the capital of $0?"
+          :sq {0 {:q "What is the capital city of $q.0?"
+                  :a "Austin"
+                  :child :locked}}
+          :r :locked
+          :act :locked}}}
+
+[:unlock "r.3.sq.0.child"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 5
+     "2" {:q  "What is the capital of $0?"
+          :sq {0 {:q "What is the capital city of $q.0?"
+                  :a "Austin"
+                  :child {:max-v 1}}}
+          :r :locked}}}
+
+;; The number of versions doesn't include the final version where the reply
+;; is given, because nobody ever sees that version and no action is taken
+;; there.
+
+[:unlock "r.3.sq.0.child.1"]
+
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 6
+     "2" {:q  "What is the capital of $0?"
+          :sq {0 {:q "What is the capital city of $q.0?"
+                  :a "Austin"
+                  :child {:versions 2
+                          "1" {:q "What is the capital city of [0: Texas]?"
+                               :sq {}
+                               :r :locked
+                               :act :locked}}}}
+          :r :locked}}}
+
+[:reply "It was answered in $r.3.sq.0.child.1"]
+
+;; Reflection pointer in root answer.
+
+"It was answered in [1:
+{:versions 2
+ “1“ {:q “What is the capital city of [0: Texas]?”
+      :sq {}
+      :r :locked
+      :act :locked}}
+]"
+
+;; The locked pointers could be removed.
+;; :act could be automatically unlocked.
+;; If this was a non-root hypertext, it should also include the parent pointer.
+;; I could remove the locked :r pointer and the :parent pointer together in a
+;; root answer.
