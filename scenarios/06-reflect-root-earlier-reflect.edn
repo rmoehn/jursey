@@ -1,0 +1,96 @@
+[:root "What is the capital of [Texas]?"]
+
+P0
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:unlock "r"]
+
+P1
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r {:parent :locked
+     :max-v 1}}
+
+[:unlock "r.parent"]
+
+;; The rendering has to detect that there is no parent and not put :parent
+;; in the map. But that means that it can also detect when the parent
+;; is a root question pseudo-workspace and not put :parent in the map in the
+;; first place. The latter is better.
+P2
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r {:parent {:max-v 1}
+     :max-v 2}}
+
+;; ⏮ New, without :parent in the first place:
+
+P0
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:unlock "r"]
+
+P1
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r {:max-v 1}}
+
+[:ask "What is the capital city of $q.0?"]
+
+;; That brings me to a new problem, though: Apparently I can't easily find a
+;; workspace's children after they have given their answer. The answer
+;; pointer just points at the answer and there is no other relation. I can
+;; find the transaction that changed the pointer and look at the pointer
+;; before that, but that's cumbersome. Let's see.
+
+P2
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r {:max-v 2}}
+
+[:unlock "r.1"]
+
+P3
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r {:max-v 3
+     1 {:ws {:q  "What is the capital of $0?"
+             :sq {}
+             :r {:max-v 1}}
+        :act [:ask "What is the capital city of $q.0?"]
+        :children {}}}}
+
+;; Looks like reflecting an earlier version of the same workspace that contains
+;; reflection structures is no problem. Let's do it once more.
+
+[:unlock "r.3"]
+
+P4
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r {:max-v 4
+     1 {:ws {:q  "What is the capital of $0?"
+             :sq {}
+             :r {:max-v 1}}
+        :act [:ask "What is the capital city of $q.0?"]
+        :children {}}
+     3 {:ws {:q  "What is the capital of $0?"
+             :sq {0 {:q "What is the capital city of $q.0?"
+                     :a :locked}}
+             :r {:max-v 3
+                 1 {:ws {:q  "What is the capital of $0?"
+                         :sq {}
+                         :r {:max-v 1}}
+                    :act [:ask "What is the capital city of $q.0?"]
+                    :children {}}}}
+        :act [:unlock "r.3"]
+        :children {0 :locked}}}}
+
+;; Ok.
