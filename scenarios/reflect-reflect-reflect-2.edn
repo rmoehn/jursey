@@ -21,12 +21,14 @@
 
 [:unlock "q.0"]
 
+1
 {:q "What is the capital city of [0: Texas]?"
  :sq {}
  :r :locked}
 
 [:ask "Who was the father of $q.0?"]
 
+2
 {:q  "What is the capital city of [0: Texas]?"
  :sq {"0" {:q "Who was the father of $q.0?"
            :a :locked}}
@@ -36,17 +38,20 @@
 
 ;;;; ▶️ BEGIN In grandchild workspace
 
+0
 {:q "Who was the father of $1?"
  :r :locked}
 
 [:unlock "r"]
 
+1
 {:q "Who was the father of $1?"
  :r {:parent :locked
      :max-v 1}}
 
 [:unlock "r.parent"]
 
+2
 {:q "Who was the father of $1?"
  :r {:parent {:parent :locked
               :max-v 2}
@@ -54,6 +59,7 @@
 
 [:unlock "r.parent.2"]
 
+3
 {:q "Who was the father of $1?"
  :r {:parent {:parent :locked
               :max-v  2
