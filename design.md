@@ -27,15 +27,14 @@
     - Launder it through a sub-question.
 
 - Upwards navigation:
-    - Probably with a magic pointer r.parent.
-    - Or with another command :unlock-reflection-parent.
-    - It puts a parent on top of the current reflection structure and changes
-      "r" to point at that parent.
+    - Each workspace structure has a parent entry that the user can unlock and
+      thus grow the tree from one level higher.
 
 - Reflecting workspaces that reflected other workspaces, and unlocking more of
   the other workspaces' reflection pointers:
-    - Either we add "r1", "r2" reflection entries for things that are unlocked
-      in outer workspaces. And only reflection entries from the outermost
-      reflection can be unlocked further.
-    - Or we mark each reflection entry with the level of reflection that it was
-      unlocked by. I feel that this way is slightly better.
+    - See scenarios/reflect-reflect-reflect-3.edn.
+    - Reflected workspaces' reflection entries cannot be unlocked.
+    - They can be laundered through a sub-question.
+    - All of a reflected workspace's reflection entries are also reachable
+      without going through that reflected workspace, they can just be unlocked
+      there.
