@@ -51,7 +51,7 @@
  :act :locked}
 
 ;; Now of course this new workspace has a predecessor as well. I have to take
-;; care of it somehow. – Every action has to be reflectable. Do I have to
+;; care of it somehow. – Every action has to be reflectable. Do I have to
 ;; define something recursively?
 
 [:unlock "pred.sq.0.child"]

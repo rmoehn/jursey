@@ -89,7 +89,7 @@
 ;; modification of the whole tree. Or I could have a local numbering where
 ;; counters increase with every modification of a workspace.
 
-;; Also, if I want to store all that stuff in the DB without sharing – just
+;; Also, if I want to store all that stuff in the DB without sharing – just
 ;; copies/snapshots, is it exponential space?
 ;; No, because we wouldn't make copies of reflected things, because their
 ;; pointers have to have the same locked/unlocked state as in the original

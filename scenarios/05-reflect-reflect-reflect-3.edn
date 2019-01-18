@@ -200,8 +200,8 @@ C9
 ;; directly.
 ;;
 ;; Note that "r.3.children.0.4.ws.r.parent.2.act" looks unwieldy, but once you
-;; know how to read it, it's easy. Current ws → version 3 → child for
-;; sub-question 0 → version 4 → workspace → reflected parent → action in
+;; know how to read it, it's easy. Current ws → version 3 → child for
+;; sub-question 0 → version 4 → workspace → reflected parent → action in
 ;; version 2.
 
 [:unlock "r.3.act"]
