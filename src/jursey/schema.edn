@@ -34,6 +34,11 @@
  :db/valueType :db.type/ref  ; ws
  :db/cardinality :db.cardinality/many}
 
+{:db/ident :ws/reflect
+ :db/valueType :db.type/ref ; reflect
+ :db/isComponent true
+ :db/cardinality :db.cardinality/one}
+
 ;;;; qa
 
 {:db/ident :qa/question
@@ -45,6 +50,37 @@
  :db/valueType :db.type/ref  ; Either ws hypertext
  :db/isComponent true
  :db/cardinality :db.cardinality/one}
+
+;;;; reflect
+
+{:db/ident :reflect/parent
+ :db/valueType :db.type/ref ; reflect
+ :db/isComponent true
+ :db/cardinality :db.cardinality/one}
+
+;; Note: I need both :ws/reflect and :reflect/ws. Because the same workspace
+;; might be reflected in many places with one :reflect/* each. So a workspace
+;; needs to indicate with its :ws/reflect attribute, which :reflect/* entity
+;; should be shown for it.
+{:db/ident :reflect/ws
+ :db/valueType :db.type/ref ; ws
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :reflect/version
+ :db/valueType :db.type/ref ; version
+ :db/isComponent true
+ :db/cardinality :db.cardinality/many}
+
+;;;; version
+
+{:db/ident :version/number
+ :db/valueType :db.type/ref ; tx? Or just :db.type/int? To be figured out.
+ :db/cardinality :db.cardinality/one}
+
+{:db/ident :version/child
+ :db/valueType :db.type/ref ; reflect
+ :db/isComponent true
+ :db/cardinality :db.cardinality/many}
 
 ;;;; act
 
