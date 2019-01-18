@@ -10,13 +10,28 @@ Branches
 --------
 
 If you want to have a reliable branch (ie. no force-pushes), use `master`. If
-you want to see the newest changes or study history in detail, look at `dev`.
+you want to see the newest changes, look at the `dev-X` branch with the highest
+X. If you want to study history in detail, look at all the `dev` branches.
 
-I develop on branch `dev`, where I make many snapshot commits and to which I
-force-push sometimes. I then lump changes from `dev` together and apply them to
-`master`. The effect is that the commits on `dev` are too small and the commits
-on `master` are too big. None of them are ‘logically separate changesets’. This
-is the nature of prototyping.
+My development process:
+
+1. Start task X.
+2. `git checkout -b dev-X master` (Until task 9.2 I developed everything on
+   branch `dev`.)
+3. Make snapshot commits, push often, force-push sometimes.
+4. Review changes: `git difftool master`
+5. `git co master`
+6. `git merge dev-X`
+7. Squash and reword as needed.
+8. `git push`
+
+Note:
+
+- The commits on `dev-X` are too small and the commits on `master` are too big.
+  None of them are ‘logically separate changesets’. This is the nature of
+  prototyping.
+
+- Sometimes I push to `master` directly.
 
 
 Use Datomic JAR with Leiningen
