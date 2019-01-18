@@ -231,7 +231,7 @@ C10
 
 [:reply "Austin"]
 
-;;;; ⏹ END In grandchild workspace.
+;;;; ⏹ END In child workspace.
 
 P2
 {:q  "What is the capital of $0?"

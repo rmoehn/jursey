@@ -17,7 +17,7 @@
       and sideways navigation possible) with one unlocked version, because
       that's what I want to point out for that other workspace.
 
-- Putting a pointer at at reflection structure in a root answer.
+- Putting a pointer at a reflection structure in a root answer.
     - Have to be careful not to automatically unlock any reflection entries.
     - The pointer itself can be unlocked, though, and will point to a
       `:reflection/*`, `:version/ws` or `:version/act` entry.
@@ -38,3 +38,8 @@
     - All of a reflected workspace's reflection entries are also reachable
       without going through that reflected workspace, they can just be unlocked
       there.
+
+- Reachability:
+    - From an "r" entry one can reach anything that happened up to the "r"'s
+      `:reflection/ws`'s transaction time. Even when reflecting the past, one
+      cannot look its the future.
