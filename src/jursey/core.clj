@@ -210,16 +210,32 @@
          :locked
          (render-htdata (sget qadata "a")))})
 
+(defn get-reflectdata [db wsid]
+  (if (get (d/entity db wsid) :ws/reflect)
+    (let [version-count (d/q '[:find (count ?tx) .
+                               :in $ ?ws
+                               :where
+                               [?tx :tx/ws ?ws]]
+                             db wsid)]
+      {:max-v (dec version-count)})
+    :locked))
+
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) sub-qas)}))
+     "sq" (string-indexed-map #(get-qadata db %) sub-qas)
+     "r"  (get-reflectdata db id)}))
+;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
+;; - find out how many versions there are and put them in :max-v
+;; - that's all for now.
 
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
-   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))})
+   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
+   "r"  (sget wsdata "r")})
+;; ✔ SKETCH: Needs to output "r" entry.
 
 
 ;;;; Copying hypertext
@@ -388,9 +404,30 @@
             :tx/act "actid"}])]
     txreq))
 
+;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
+(defn act-txreq [wsid command content]
+  [{:db/id       "actid"
+    :act/command (keyword "act.command" (name command))
+    :act/content content}
+   {:db/id  "datomic.tx"
+    :tx/ws  wsid
+    :tx/act "actid"}])
+
+(defn- unlock-reflect [db wsid]
+  (concat [{:db/id      wsid
+            :ws/reflect "rid"}
+           {:db/id      "rid"
+            :reflect/ws wsid}]
+          (act-txreq wsid :unlock "r")))
+
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
-  (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))
+  (if (= pointer "r")
+    (unlock-reflect db wsid)
+    (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer)))
+;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
+;; refer to it via :ws/reflect.
+;; Once I'm there, I can add unlocking of a version.
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -552,6 +589,16 @@
 (def --Comment)
 
 (comment
+
+  ;;;; Scenario: Reflection
+
+  (set-up {:reset? true})
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+  (start-working conn)
+  (run [:ask "What is the capital city of $q.0?"])
+  (run [:unlock "r"])
+
 
   ;;;; Scenario: Pointer 1
 
