@@ -59,6 +59,36 @@
   )
 
 
+;;;; Workspace API
+(def --Workspace-API)
+
+;; Note: I think it would be more idiomatic to use the log API in this place.
+;; See the alternative implementation below. However, if I wanted to use the
+;; log, I would have to pass it around together with db. Later it might turn out
+;; to be necessary, but for now avoid that kind of clutter by using an index.
+(defn get-ws-txs [db wsid]
+  (->> (d/datoms db :eavt wsid)
+       (map :tx)
+       distinct
+       vec))
+
+
+;;;; Reflect API
+(def --Reflect-API)
+
+(defn get-reflect-versions
+  "Return versions of reflect entity `id`, ordered from oldest to newest."
+  [db id]
+  (->> (d/q '[:find ?v ?tx
+              :in $ ?r
+              :where
+              [?r :reflect/version ?v]
+              [?v :version/tx ?tx]]
+            db id)
+       (sort-by second)
+       (map first)))
+
+
 ;;;; Hypertext string → transaction map
 (def --Hypertext-parsing)
 
@@ -97,6 +127,9 @@
 ;; a "transaction request" and its parts "transaction parts". There are also the
 ;; nested data structures that I turn into a transaction request with
 ;; datomic-helpers/translate-value. These I call "transaction trees".
+;; TODO: Make the naming more consistent. For example, there is act-txreq,
+;; which never returns a whole txreq, just some txparts (or a txpart?). (RM
+;; 2019-01-21)
 (declare process-httree)
 
 (defn tmp-htid
@@ -210,16 +243,55 @@
          :locked
          (render-htdata (sget qadata "a")))})
 
+(declare get-wsdata)
+
+(defn get-version-data [db wsid id]
+  (let [tx (sget-in (d/entity db id) [:version/tx :db/id])]
+    {:wsdata (get-wsdata (d/as-of db tx) wsid)}))
+;; Get the wsdata, action and children at that version.
+
+;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
+;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
+;; with a dash.
+(defn get-reflect-data [db wsid]
+  (if-let [reflect-id (get-in (d/entity db wsid) [:ws/reflect :db/id])]
+    (let [version-count (count (get-ws-txs db wsid))]
+      (into {:type       :reflect
+             :reflect-id reflect-id
+             :max-v      (dec version-count)}
+            (->> (get-reflect-versions db reflect-id)
+                 (map #(get-version-data db wsid %)))))
+    :locked))
+
+(comment
+
+  (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
+      (select-keys #{:db/id :version/tx}))
+
+
+
+  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
+
+  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
+
+  )
+
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) sub-qas)}))
+     "sq" (string-indexed-map #(get-qadata db %) sub-qas)
+     "r"  (get-reflect-data db id)}))
+;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
+;; - find out how many versions there are and put them in :max-v
+;; - that's all for now.
 
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
-   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))})
+   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
+   "r"  (sget wsdata "r")})
+;; ✔ SKETCH: Needs to output "r" entry.
 
 
 ;;;; Copying hypertext
@@ -378,19 +450,70 @@
           ;; renderable. This way I don't have to find all the pointers with
           ;; pending unlock after the reply is given.
           [{:db/id           pid
-            :pointer/locked? false}
-
-           {:db/id       "actid"
-            :act/command :act.command/unlock
-            :act/content pointer}
-           {:db/id  "datomic.tx"
-            :tx/ws  wsid
-            :tx/act "actid"}])]
+            :pointer/locked? false}])]
     txreq))
+
+;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
+;; Note: If it should be used in all command-implementing functions,
+;; shouldn't I just put it in their caller? Or make it a sort of wrapper?
+;; On the one hand that would avoid repetition. On the other hand: Wrappers
+;; can make debugging harder. And currently only caller is `run`, which is in
+;; a higher layer. I could put a caller in between, but that would be ugly as
+;; well. So for now leave calls to `act-txreq` in the command-implementing
+;; functions.
+(defn act-txreq [wsid command content]
+  [{:db/id       "actid"
+    :act/command (keyword "act.command" (name command))
+    :act/content content}
+   {:db/id  "datomic.tx"
+    :tx/ws  wsid
+    :tx/act "actid"}])
+
+;; LATER TODO: See if I need the `db` and remove it if not. (RM 2019-01-21)
+(defn- unlock-reflect [db wsid]
+  [{:db/id      wsid
+    :ws/reflect "rid"}
+   {:db/id      "rid"
+    :reflect/ws wsid}])
+
+;; Alternative implementation:
+(comment
+  (d/q '[:find [?tx ...]
+         :in ?log ?ws
+         :where
+         [(tx-ids ?log nil nil) [?tx ...]]
+         [(tx-data ?log ?tx) [[?ws]]]]
+       (d/log conn) wsid))
+
+(defn- unlock-version [db reflect-id version]
+  (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
+    (concat [{:db/id           reflect-id
+              :reflect/version "vid"}
+             {:db/id      "vid"
+              :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
-  (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))
+  (let [path (->path pointer)
+        parent-path (vec (butlast path))
+
+        txreq
+        (cond
+          (and (= 1 (count path)) (= "r" (first path)))
+          (unlock-reflect db wsid)
+
+          (and
+            (= :reflect (get-in wsdata (conj parent-path :type)))
+            (re-find #"\d+" (last path)))
+          (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
+                          (Integer/parseInt (last path)))
+
+          :else
+          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
+    (concat txreq (act-txreq wsid :ask pointer))))
+;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
+;; refer to it via :ws/reflect.
+;; Once I'm there, I can add unlocking of a version.
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -552,6 +675,36 @@
 (def --Comment)
 
 (comment
+
+  ;;;; Scenario: Reflection
+
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "r"])
+      )
+
+  (run [:unlock "r.2"])
+
+
+  (let [tids (d/q '[:find [?tx ...]
+                    :in $ ?ws
+                    :where
+                    [?tx :tx/ws ?ws]]
+                  (d/db conn) @last-shown-wsid)
+        ts (map d/tx->t tids)
+        all-ts (cons (dec (first ts)) ts)]
+    (pprint/pprint (map #(render-wsdata (get-wsdata (d/as-of (d/db conn) %)
+                                       @last-shown-wsid))
+                        all-ts)))
+
+
+
+
+  (render-wsdata (get-wsdata (d/db conn) @last-shown-wsid))
 
   ;;;; Scenario: Pointer 1
 

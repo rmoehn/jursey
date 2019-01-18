@@ -73,8 +73,8 @@
 
 ;;;; version
 
-{:db/ident :version/number
- :db/valueType :db.type/ref ; tx? Or just :db.type/int? To be figured out.
+{:db/ident :version/tx
+ :db/valueType :db.type/ref ; tx
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :version/child
