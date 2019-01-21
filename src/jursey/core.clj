@@ -67,7 +67,26 @@
 ;; log, I would have to pass it around together with db. Later it might turn out
 ;; to be necessary, but for now avoid that kind of clutter by using an index.
 (defn get-ws-txs [db wsid]
-  (distinct (map :tx (d/datoms db :eavt wsid))))
+  (->> (d/datoms db :eavt wsid)
+       (map :tx)
+       distinct
+       vec))
+
+
+;;;; Reflect API
+(def --Reflect-API)
+
+(defn get-reflect-versions
+  "Return versions of reflect entity `id`, ordered from oldest to newest."
+  [db id]
+  (->> (d/q '[:find ?v ?tx
+              :in $ ?r
+              :where
+              [?r :reflect/version ?v]
+              [?v :version/tx ?tx]]
+            db id)
+       (sort-by second)
+       (map first)))
 
 
 ;;;; Hypertext string → transaction map
@@ -224,16 +243,38 @@
          :locked
          (render-htdata (sget qadata "a")))})
 
+(declare get-wsdata)
+
+(defn get-version-data [db wsid id]
+  (let [tx (sget-in (d/entity db id) [:version/tx :db/id])]
+    {:wsdata (get-wsdata (d/as-of db tx) wsid)}))
+;; Get the wsdata, action and children at that version.
+
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
 (defn get-reflect-data [db wsid]
   (if-let [reflect-id (get-in (d/entity db wsid) [:ws/reflect :db/id])]
     (let [version-count (count (get-ws-txs db wsid))]
-      {:type  :reflect
-       :reflect-id reflect-id
-       :max-v (dec version-count)})
+      (into {:type       :reflect
+             :reflect-id reflect-id
+             :max-v      (dec version-count)}
+            (->> (get-reflect-versions db reflect-id)
+                 (map #(get-version-data db wsid %)))))
     :locked))
+
+(comment
+
+  (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
+      (select-keys #{:db/id :version/tx}))
+
+
+
+  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
+
+  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
+
+  )
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
@@ -447,17 +488,14 @@
 (defn- unlock-version [db reflect-id version]
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
-             :reflect/version "vid"}
-            {:db/id      "vid"
-             :version/tx (-> (get-ws-txs db wsid) (sget version))}])))
+              :reflect/version "vid"}
+             {:db/id      "vid"
+              :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (vec (butlast path))
-        _ (pprint/pprint parent-path)
-        _ (pprint/pprint path)
-        _ (pprint/pprint wsdata)
 
         txreq
         (cond
@@ -465,8 +503,8 @@
           (unlock-reflect db wsid)
 
           (and
-            (= :reflect (-pprint- (get-in wsdata (conj parent-path :type))))
-            (re-find #"\d+" (-pprint- (last path))))
+            (= :reflect (get-in wsdata (conj parent-path :type)))
+            (re-find #"\d+" (last path)))
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
 
@@ -650,6 +688,7 @@
       )
 
   (run [:unlock "r.2"])
+
 
   (let [tids (d/q '[:find [?tx ...]
                     :in $ ?ws
