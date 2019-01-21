@@ -112,14 +112,20 @@
       pointer-re)))
 
 (defn ->path [pointer & relative-path]
-  (into (string/split pointer #"\.") relative-path))
+  (into (->> (string/split pointer #"\.")
+             (mapv (fn [component]
+                     (try (Integer/parseInt component)
+                          (catch NumberFormatException _
+                            (keyword component))))))
+        relative-path))
 
 (defn process-pointer [wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
         path (->path pointer)]
     {:repr    dollar-pointer
      :pointer {:pointer/name    pointer
-               :pointer/locked? (sget-in wsdata (conj path :locked?))
+               :pointer/locked? (sget-in (-pprint- wsdata) (-pprint- (conj path
+                                                                   :locked?)))
                :pointer/target  (sget-in wsdata (conj path :target))}}))
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
@@ -189,14 +195,6 @@
   [s m]
   (reduce-kv string/replace s m))
 
-(defn string-indexed-map
-  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
-  Curved quotation marks substitute for straight ones in this docstring."
-  [f xs]
-  (into {} (map-indexed (fn [i v]
-                          [(str i) (f v)])
-                        xs)))
-
 (defn render-htdata [htdata]
   (let [name->htdata
         (apply dissoc htdata (filter keyword? (keys htdata)))
@@ -216,7 +214,7 @@
            :target  id
            :locked? false}
           (map (fn [p]
-                 [(sget p :pointer/name)
+                 [(Integer/parseInt (sget p :pointer/name))
                   (if (sget p :pointer/locked?)
                     {:id (sget p :db/id)
                      :locked? true
@@ -227,21 +225,21 @@
 (defn get-qadata [db
                   {{q-htid :db/id} :qa/question
                    {apid :db/id}   :qa/answer}]
-  {"q" (get-htdata db q-htid)
-   "a" (let [{pid :db/id
-              locked? :pointer/locked?
-              {target :db/id} :pointer/target} (d/pull db '[*] apid)]
-         (if locked?
-           {:id pid
-            :locked? true
-            :target target}
-           (get-htdata db target)))})
+  {:q (get-htdata db q-htid)
+   :a (let [{pid :db/id
+             locked? :pointer/locked?
+             {target :db/id} :pointer/target} (d/pull db '[*] apid)]
+        (if locked?
+          {:id pid
+           :locked? true
+           :target target}
+          (get-htdata db target)))})
 
 (defn render-qadata [qadata]
-  {"q" (render-htdata (sget qadata "q"))
-   "a" (if (sget-in qadata ["a" :locked?])
-         :locked
-         (render-htdata (sget qadata "a")))})
+  {:q (render-htdata (sget qadata :q))
+   :a (if (sget-in qadata [:a :locked?])
+        :locked
+        (render-htdata (sget qadata :a)))})
 
 (declare get-wsdata)
 
@@ -280,17 +278,17 @@
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
-    {"q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) sub-qas)
-     "r"  (get-reflect-data db id)}))
+    {:q  (some->> qid (get-htdata db))
+     :sq (into {} (map-indexed #(vector %1 (get-qadata db %2)) sub-qas))
+     :r  (get-reflect-data db id)}))
 ;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
 ;; - find out how many versions there are and put them in :max-v
 ;; - that's all for now.
 
 (defn render-wsdata [wsdata]
-  {"q"  (render-htdata (sget wsdata "q"))
-   "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
-   "r"  (sget wsdata "r")})
+  {:q  (render-htdata (sget wsdata :q))
+   :sq (plumbing/map-vals #(render-qadata %) (get wsdata :sq))
+   :r  (sget wsdata :r)})
 ;; ✔ SKETCH: Needs to output "r" entry.
 
 
@@ -496,20 +494,23 @@
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (vec (butlast path))
+        _ (println wsdata)
 
         txreq
         (cond
-          (and (= 1 (count path)) (= "r" (first path)))
+          (and (= 1 (count path)) (= :r (first path)))
           (unlock-reflect db wsid)
 
           (and
             (= :reflect (get-in wsdata (conj parent-path :type)))
-            (re-find #"\d+" (last path)))
+            (integer? (last path)))
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
 
           :else
-          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
+          (unlock-by-pmap db wsid (sget-in wsdata (->path
+                                                    pointer))
+                          pointer))]
     (concat txreq (act-txreq wsid :ask pointer))))
 ;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
 ;; refer to it via :ws/reflect.
@@ -609,7 +610,7 @@
 
         ;; Kick off processing by unlocking the answer to this root question.
         unlock-txreq
-        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
+        (unlock db-after wsid (-pprint- (get-wsdata db-after wsid)) "sq.0.a")]
     (d/transact conn unlock-txreq)))
 
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
@@ -619,7 +620,7 @@
 (defn- get-root-qa [conn wsid]
   (let [db-at-start (d/db conn)
         question (-> (get-wsdata db-at-start wsid)
-                     (sget-in ["sq" "0" "q"])
+                     (sget-in [:sq 0 :q])
                      render-htdata)]
     (loop [db db-at-start]
       (if (get (d/entity db wsid) :ws/waiting-for)
@@ -627,7 +628,7 @@
         (let [wsdata      (get-wsdata db wsid)
               locked-pmap (s/select-first (s/walker :locked?) wsdata)]
           (if (nil? locked-pmap) ; No locked pointers left.
-            [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
+            [question (render-htdata (sget-in wsdata [:sq 0 :a]))]
             (do @(d/transact conn
                              (unlock-by-pmap
                                db wsid locked-pmap (str locked-pmap)))
@@ -658,7 +659,7 @@
   (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
         wsid @last-shown-wsid
         db (d/db conn)
-        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+        txreq (-pprint- (cmd-fn db wsid (get-wsdata db wsid) arg))
 
         _ @(d/transact conn txreq)
         db (d/db conn)
@@ -780,10 +781,10 @@
   ;; pointers, only to output/number pointers. This is not a limitation, because
   ;; input pointers can only refer to something that is already in the workspace.
   ;; So one can just refer to that directly.
-  {"q"  "What is the capital of $0?"
-   "sq" {"0" {"q" "What is the capital city of &q.0?"
-              "a" :locked}
-         "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
+  {:q  "What is the capital of $0?"
+   :sq {0 {:q "What is the capital city of &q.0?"
+              :a :locked}
+         1 {:q "What is the population of &sq.0.q.&(q.0)"}}}
 
   )
 
