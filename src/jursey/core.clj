@@ -246,8 +246,10 @@
 (declare get-wsdata)
 
 (defn get-version-data [db wsid id]
-  (let [tx (sget-in (d/entity db id) [:version/tx :db/id])]
-    {:wsdata (get-wsdata (d/as-of db tx) wsid)}))
+  (let [{version-no :version/number
+         {tx :db/id} :version/tx} (d/entity db id)]
+    {:number version-no
+     :wsdata (get-wsdata (d/as-of db tx) wsid)}))
 ;; Get the wsdata, action and children at that version.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
@@ -260,7 +262,9 @@
              :reflect-id reflect-id
              :max-v      (dec version-count)}
             (->> (get-reflect-versions db reflect-id)
-                 (map #(get-version-data db wsid %)))))
+                 (map #(let [{:keys [number] :as version-data}
+                             (get-version-data db wsid %)]
+                         [number version-data])))))
     :locked))
 
 (comment
@@ -490,6 +494,7 @@
     (concat [{:db/id           reflect-id
               :reflect/version "vid"}
              {:db/id      "vid"
+              :version/number version
               :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
 ;; TODO: Check that the pointer is actually locked.
