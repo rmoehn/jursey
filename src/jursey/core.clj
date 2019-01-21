@@ -23,6 +23,10 @@
 ;; wsid … workspce entity ID
 
 
+;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout).
+;; (RM 2019-01-21)
+
+
 ;;;; Setup
 (def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
@@ -62,15 +66,46 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
-;; Note: I think it would be more idiomatic to use the log API in this place.
-;; See the alternative implementation below. However, if I wanted to use the
-;; log, I would have to pass it around together with db. Later it might turn out
-;; to be necessary, but for now avoid that kind of clutter by using an index.
-(defn get-ws-txs [db wsid]
-  (->> (d/datoms db :eavt wsid)
-       (map :tx)
-       distinct
-       vec))
+(defn get-ws-txs
+  "
+  Caution: This might not work with a since-db."
+  [db wsid]
+  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)]
+    (->> (d/q '[:find [?tx ...]
+                :in $ ?ws
+                :where
+                [?tx :tx/ws ?ws]
+                (not-join [?tx]
+                          [?tx :tx/act ?a]
+                          [?a :act/command :act.command/reply])]
+              (d/history db) wsid)
+         sort
+         (cons first-tx)
+         vec)))
+
+
+;;;; Version API
+(def --Version-API)
+
+(defn get-version-act [db id]
+  (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
+                                   :in $ ?v
+                                   :where
+                                   [?r :reflect/version ?v]
+                                   [?r :reflect/ws ?ws]
+                                   [?v :version/tx ?tx]]
+                                 db id)
+        next-version-txid (->> (get-ws-txs db wsid)
+                               (drop-while #(not= version-txid %))
+                               second)]
+    (d/q '[:find [?command ?content]
+           :in $ ?tx
+           :where
+           [?tx :tx/act ?a]
+           [?a :act/command ?cmdident]
+           [?a :act/content ?content]
+           [?cmdident :db/ident ?command]]
+         db next-version-txid)))
 
 
 ;;;; Reflect API
@@ -79,14 +114,14 @@
 (defn get-reflect-versions
   "Return versions of reflect entity `id`, ordered from oldest to newest."
   [db id]
-  (->> (d/q '[:find ?v ?tx
+  (->> (d/q '[:find ?tx ?v
               :in $ ?r
               :where
               [?r :reflect/version ?v]
               [?v :version/tx ?tx]]
             db id)
-       (sort-by second)
-       (map first)))
+       (sort-by first)
+       (map second)))
 
 
 ;;;; Hypertext string → transaction map
@@ -246,9 +281,18 @@
 (declare get-wsdata)
 
 (defn get-version-data [db wsid id]
-  (let [tx (sget-in (d/entity db id) [:version/tx :db/id])]
-    {:wsdata (get-wsdata (d/as-of db tx) wsid)}))
-;; Get the wsdata, action and children at that version.
+  (let [{version-no :version/number
+         {tx :db/id} :version/tx} (d/entity db id)
+        db-at-version (d/as-of db tx)]
+    {:number   version-no
+     :wsdata   (get-wsdata db-at-version wsid)
+     :act  (get-version-act db id)
+     :children (into {}
+                     (map-indexed (fn [i _] [i :locked])
+                                  (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+;; For the children I need to get the right number/index. Actually I only
+;; need to find out how many children there were at the time. – For now! Then
+;; when I implement unlocking of children, I have to do more.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
@@ -260,28 +304,17 @@
              :reflect-id reflect-id
              :max-v      (dec version-count)}
             (->> (get-reflect-versions db reflect-id)
-                 (map #(get-version-data db wsid %)))))
+                 (map #(let [{:keys [number] :as version-data}
+                             (get-version-data db wsid %)]
+                         [number version-data])))))
     :locked))
-
-(comment
-
-  (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
-      (select-keys #{:db/id :version/tx}))
-
-
-
-  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
-
-  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
-
-  )
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) sub-qas)
+     "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
      "r"  (get-reflect-data db id)}))
 ;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
 ;; - find out how many versions there are and put them in :max-v
@@ -476,20 +509,12 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
-;; Alternative implementation:
-(comment
-  (d/q '[:find [?tx ...]
-         :in ?log ?ws
-         :where
-         [(tx-ids ?log nil nil) [?tx ...]]
-         [(tx-data ?log ?tx) [[?ws]]]]
-       (d/log conn) wsid))
-
 (defn- unlock-version [db reflect-id version]
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
               :reflect/version "vid"}
              {:db/id      "vid"
+              :version/number version
               :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
 ;; TODO: Check that the pointer is actually locked.
@@ -510,7 +535,7 @@
 
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
-    (concat txreq (act-txreq wsid :ask pointer))))
+    (concat txreq (act-txreq wsid :unlock pointer))))
 ;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
 ;; refer to it via :ws/reflect.
 ;; Once I'm there, I can add unlocking of a version.
@@ -687,7 +712,11 @@
       (run [:unlock "r"])
       )
 
+  (run [:unlock "r.0"])
+  (run [:unlock "r.1"])
   (run [:unlock "r.2"])
+  (run [:unlock "r.3"])
+  (run [:unlock "r.4"])
 
 
   (let [tids (d/q '[:find [?tx ...]
