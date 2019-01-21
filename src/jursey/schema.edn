@@ -76,6 +76,8 @@
 {:db/ident :version/number
  :db/valueType :db.type/ref ; tx? Or just :db.type/int? To be figured out.
  :db/cardinality :db.cardinality/one}
+;; Probybly it's best to use tx, because that's what the log and history APIs
+;; use too.
 
 {:db/ident :version/child
  :db/valueType :db.type/ref ; reflect
