@@ -23,6 +23,10 @@
 ;; wsid … workspce entity ID
 
 
+;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout).
+;; (RM 2019-01-21)
+
+
 ;;;; Setup
 (def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
 
@@ -73,20 +77,50 @@
        vec))
 
 
+;;;; Version API
+(def --Version-API)
+
+(defn get-version-command
+  "Return the command that was issued in workspace with version `id`."
+  [db id]
+  (let [version-tx (sget-in (d/entity db id) [:version/tx :db/id])
+
+        command
+        (->> (d/q '[:find ?tx ?cmdid ?content
+                    :in $ ?v
+                    :where
+                    [?r :reflect/version ?v]
+                    [?r :reflect/ws ?ws]
+                    [?tx :tx/ws ?ws]
+                    [?tx :tx/act ?a]
+                    [?a :act/command ?cmdid]
+                    [?a :act/content ?content]]
+                  ;; Throw away all commands that led to version `id`.
+                  (d/history (d/since db version-tx))
+                  id)
+             (sort-by first)
+             (map rest)
+             (map (fn [[cid content]]
+                    [(sget (d/entity db cid) :db/ident) content]))
+             ;; Give me the first of the commands that weren't thrown away.
+             first)]
+    command))
+
+
 ;;;; Reflect API
 (def --Reflect-API)
 
 (defn get-reflect-versions
   "Return versions of reflect entity `id`, ordered from oldest to newest."
   [db id]
-  (->> (d/q '[:find ?v ?tx
+  (->> (d/q '[:find ?tx ?v
               :in $ ?r
               :where
               [?r :reflect/version ?v]
               [?v :version/tx ?tx]]
             db id)
-       (sort-by second)
-       (map first)))
+       (sort-by first)
+       (map second)))
 
 
 ;;;; Hypertext string → transaction map
@@ -249,7 +283,8 @@
   (let [{version-no :version/number
          {tx :db/id} :version/tx} (d/entity db id)]
     {:number version-no
-     :wsdata (get-wsdata (d/as-of db tx) wsid)}))
+     :wsdata (get-wsdata (d/as-of db tx) wsid)
+     :command (get-version-command db id)}))
 ;; Get the wsdata, action and children at that version.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
@@ -271,6 +306,10 @@
 
   (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
       (select-keys #{:db/id :version/tx}))
+
+
+
+  (d/pull (d/db conn) '[*] 17592186045417)
 
 
 
@@ -515,7 +554,7 @@
 
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
-    (concat txreq (act-txreq wsid :ask pointer))))
+    (concat txreq (act-txreq wsid :unlock pointer))))
 ;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
 ;; refer to it via :ws/reflect.
 ;; Once I'm there, I can add unlocking of a version.
@@ -692,7 +731,7 @@
       (run [:unlock "r"])
       )
 
-  (run [:unlock "r.2"])
+  (run [:unlock "r.0"])
 
 
   (let [tids (d/q '[:find [?tx ...]
