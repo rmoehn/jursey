@@ -66,21 +66,28 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
-;; Note: I think it would be more idiomatic to use the log API in this place.
-;; See the alternative implementation below. However, if I wanted to use the
-;; log, I would have to pass it around together with db. Later it might turn out
-;; to be necessary, but for now avoid that kind of clutter by using an index.
-(defn get-ws-txs [db wsid]
-  (->> (d/datoms db :eavt wsid)
-       (map :tx)
-       distinct
-       vec))
+(defn get-ws-txs
+  "
+  Caution: This might not work with a since-db."
+  [db wsid]
+  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)]
+    (->> (d/q '[:find [?tx ...]
+                :in $ ?ws
+                :where
+                [?tx :tx/ws ?ws]
+                (not-join [?tx]
+                          [?tx :tx/act ?a]
+                          [?a :act/command :act.command/reply])]
+              (d/history db) wsid)
+         sort
+         (cons first-tx)
+         vec)))
 
 
 ;;;; Version API
 (def --Version-API)
 
-(defn get-version-command
+(defn get-version-act
   "Return the command that was issued in workspace with version `id`."
   [db id]
   (let [version-tx (sget-in (d/entity db id) [:version/tx :db/id])
@@ -281,11 +288,18 @@
 
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
-         {tx :db/id} :version/tx} (d/entity db id)]
-    {:number version-no
-     :wsdata (get-wsdata (d/as-of db tx) wsid)
-     :command (get-version-command db id)}))
-;; Get the wsdata, action and children at that version.
+         {tx :db/id} :version/tx} (d/entity db id)
+        db-at-version (d/as-of db tx)]
+    (println version-no tx)
+    {:number   version-no
+     :wsdata   (get-wsdata db-at-version wsid)
+     :act  (get-version-act db id)
+     :children (into {}
+                     (map-indexed (fn [i _] [i :locked])
+                                  (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+;; For the children I need to get the right number/index. Actually I only
+;; need to find out how many children there were at the time. – For now! Then
+;; when I implement unlocking of children, I have to do more.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
@@ -307,6 +321,7 @@
   (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
       (select-keys #{:db/id :version/tx}))
 
+  (get-ws-txs (d/db conn) @last-shown-wsid)
 
 
   (d/pull (d/db conn) '[*] 17592186045417)
@@ -324,7 +339,7 @@
          sub-qas :ws/sub-qa}
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) sub-qas)
+     "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
      "r"  (get-reflect-data db id)}))
 ;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
 ;; - find out how many versions there are and put them in :max-v
@@ -518,15 +533,6 @@
     :ws/reflect "rid"}
    {:db/id      "rid"
     :reflect/ws wsid}])
-
-;; Alternative implementation:
-(comment
-  (d/q '[:find [?tx ...]
-         :in ?log ?ws
-         :where
-         [(tx-ids ?log nil nil) [?tx ...]]
-         [(tx-data ?log ?tx) [[?ws]]]]
-       (d/log conn) wsid))
 
 (defn- unlock-version [db reflect-id version]
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
@@ -732,6 +738,10 @@
       )
 
   (run [:unlock "r.0"])
+  (run [:unlock "r.1"])
+  (run [:unlock "r.2"])
+  (run [:unlock "r.3"])
+  (run [:unlock "r.4"])
 
 
   (let [tids (d/q '[:find [?tx ...]
