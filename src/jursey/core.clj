@@ -46,9 +46,9 @@
           (def conn (d/connect db-uri))
 
           (with-open [rdr (io/reader "src/jursey/schema.edn")]
-            (d/transact conn (datomic.Util/readAll rdr)))
+            @(d/transact conn (datomic.Util/readAll rdr)))
 
-          (d/transact conn [{:agent/handle test-agent}])))))
+          @(d/transact conn [{:agent/handle test-agent}])))))
 
 (comment
 
