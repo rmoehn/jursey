@@ -73,6 +73,10 @@
 
 ;;;; version
 
+{:db/ident :version/number
+ :db/valueType :db.type/long
+ :db/cardinality :db.cardinality/one}
+
 {:db/ident :version/tx
  :db/valueType :db.type/ref ; tx
  :db/cardinality :db.cardinality/one}
