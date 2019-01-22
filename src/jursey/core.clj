@@ -3,6 +3,7 @@
             [clojure.pprint :as pprint]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
+            [cognitect.rebl :as rebl]
             [com.rpl.specter :as s]
             [datomic.api :as d]
             datomic-helpers
@@ -700,6 +701,12 @@
 (def --Comment)
 
 (comment
+
+  ;;;; Use the REBL
+
+  (rebl/ui)
+  (in-ns 'jursey.core)
+
 
   ;;;; Scenario: Reflection
 
