@@ -51,6 +51,11 @@
  :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
+{:db/ident     :qa/ws
+ :db/valueType :db.type/ref ; ws
+ :db/isComponent true
+ :db/cardinality :db.cardinality/one}
+
 ;;;; reflect
 
 {:db/ident :reflect/parent
