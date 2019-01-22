@@ -99,14 +99,15 @@
         next-version-txid (->> (get-ws-txs db wsid)
                                (drop-while #(not= version-txid %))
                                second)]
-    (d/q '[:find [?command ?content]
-           :in $ ?tx
-           :where
-           [?tx :tx/act ?a]
-           [?a :act/command ?cmdident]
-           [?a :act/content ?content]
-           [?cmdident :db/ident ?command]]
-         db next-version-txid)))
+    (when next-version-txid
+      (d/q '[:find [?command ?content]
+             :in $ ?tx
+             :where
+             [?tx :tx/act ?a]
+             [?a :act/command ?cmdident]
+             [?a :act/content ?content]
+             [?cmdident :db/ident ?command]]
+           db next-version-txid))))
 
 
 ;;;; Reflect API
@@ -288,7 +289,8 @@
                       {version-id :db/id}
                       {{sub-wsid :db/id} :qa/ws}]
   (assert (and version-id sub-wsid))
-  (let [base {:target     sub-wsid}
+  (let [base {:type       :child
+              :target     sub-wsid}
         child-reflect-id (d/q '[:find ?r .
                                 :in $ ?v ?w
                                 :where
@@ -297,8 +299,8 @@
                               db version-id sub-wsid)]
     (if child-reflect-id
       ;; TODO: :reflect → :target? (RM 2019-01-22)
-      (assoc base :reflect (get-reflect-data db child-reflect-id)
-                  :locked? false)
+      (merge base (get-reflect-data db child-reflect-id)
+             {:locked? false})
       (assoc base :locked? true))))
 
 ;; TODO: It might make sense to rename :reflect-id and :version-id to :target
@@ -316,8 +318,6 @@
      "children" (into {}
                       (string-indexed-map #(get-child-data db version %)
                                           (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
-;; SKETCH: Put a :type :version. And put a :target for each child, pointing
-;; at the workspace. Call get-reflect-data on every child.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
@@ -342,9 +342,6 @@
      "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
             (get-reflect-data db reflect-id)
             :locked)}))
-;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
-;; - find out how many versions there are and put them in :max-v
-;; - that's all for now.
 
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
@@ -758,7 +755,6 @@
       (run [:ask "Why do you feed your dog whipped cream?"])
       (run [:unlock "r"])
 
-
       (run [:unlock "r.1"])
       (run [:unlock "r.1.children.0"]))
 
@@ -779,7 +775,7 @@
         ts (map d/tx->t tids)
         all-ts (cons (dec (first ts)) ts)]
     (pprint/pprint (map #(render-wsdata (get-wsdata (d/as-of (d/db conn) %)
-                                       @last-shown-wsid))
+                                                    @last-shown-wsid))
                         all-ts)))
 
 
@@ -841,32 +837,32 @@
   (run [:unlock "q.0"])
   (run [:unlock "sq.0.a"])
   (run [:reply "I think $q.0."])
-  (run [:unlock "sq.0.a.0"])
+  (run [:unlock "sq.0.a.0"]))
 
 
-  ;; TODO tests:
-  ;; - Asking or replying [with [nested] hypertext].
-  ;; - Pointing to nested hypertext ($sq.0.0).
+;; TODO tests:
+;; - Asking or replying [with [nested] hypertext].
+;; - Pointing to nested hypertext ($sq.0.0).
 
 
-  ;;;; Reflection – gas phase
+;;;; Reflection – gas phase
 
-  ;; Find out what the user wants to do with reflection. Derive a small set of
-  ;; operations/available pointers etc. to enable that.
+;; Find out what the user wants to do with reflection. Derive a small set of
+;; operations/available pointers etc. to enable that.
 
 
-  ;;;; Archive
+;;;; Archive
 
-  ;; Example of what I'm not going to support. One can't refer to input/path
-  ;; pointers, only to output/number pointers. This is not a limitation, because
-  ;; input pointers can only refer to something that is already in the workspace.
-  ;; So one can just refer to that directly.
-  {"q"  "What is the capital of $0?"
-   "sq" {"0" {"q" "What is the capital city of &q.0?"
-              "a" :locked}
-         "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
+;; Example of what I'm not going to support. One can't refer to input/path
+;; pointers, only to output/number pointers. This is not a limitation, because
+;; input pointers can only refer to something that is already in the workspace.
+;; So one can just refer to that directly.
+{"q"  "What is the capital of $0?"
+ "sq" {"0" {"q" "What is the capital city of &q.0?"
+            "a" :locked}
+       "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-  )
+
 
 (def --Tools)
 
