@@ -280,35 +280,58 @@
          (render-htdata (sget qadata "a")))})
 
 (declare get-wsdata)
+(declare get-reflect-data)
 
+;; TODO: Make it consistent where (caller/called) and how arguments are
+;; passed, destructured and verified. (RM 2019-01-22)
+(defn get-child-data [db
+                      {version-id :db/id}
+                      {{sub-wsid :db/id} :qa/ws}]
+  (assert (and version-id sub-wsid))
+  (let [base {:target     sub-wsid}
+        child-reflect-id (d/q '[:find ?r .
+                                :in $ ?v ?w
+                                :where
+                                [?v :version/child ?r]
+                                [?r :reflect/ws ?w]]
+                              db version-id sub-wsid)]
+    (if child-reflect-id
+      ;; TODO: :reflect → :target? (RM 2019-01-22)
+      (assoc base :reflect (get-reflect-data db child-reflect-id)
+                  :locked? false)
+      (assoc base :locked? true))))
+
+;; TODO: It might make sense to rename :reflect-id and :version-id to :target
+;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
-         {tx :db/id} :version/tx} (d/entity db id)
+         {tx :db/id} :version/tx
+         :as version} (d/entity db id)
         db-at-version (d/as-of db tx)]
-    {:number   version-no
-     :wsdata   (get-wsdata db-at-version wsid)
-     :act  (get-version-act db id)
-     :children (into {}
-                     (map-indexed (fn [i _] [i :locked])
-                                  (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
-;; For the children I need to get the right number/index. Actually I only
-;; need to find out how many children there were at the time. – For now! Then
-;; when I implement unlocking of children, I have to do more.
+    {:type      :version
+     :number    version-no
+     :version-id id
+     :wsdata    (get-wsdata db-at-version wsid)
+     :act       (get-version-act db id)
+     "children" (into {}
+                      (string-indexed-map #(get-child-data db version %)
+                                          (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+;; SKETCH: Put a :type :version. And put a :target for each child, pointing
+;; at the workspace. Call get-reflect-data on every child.
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
-(defn get-reflect-data [db wsid]
-  (if-let [reflect-id (get-in (d/entity db wsid) [:ws/reflect :db/id])]
-    (let [version-count (count (get-ws-txs db wsid))]
-      (into {:type       :reflect
-             :reflect-id reflect-id
-             :max-v      (dec version-count)}
-            (->> (get-reflect-versions db reflect-id)
-                 (map #(let [{:keys [number] :as version-data}
-                             (get-version-data db wsid %)]
-                         [number version-data])))))
-    :locked))
+(defn get-reflect-data [db id]
+  (let [wsid (sget-in (d/entity db id) [:reflect/ws :db/id])
+        version-count (count (get-ws-txs db wsid))]
+    (into {:type       :reflect
+           :reflect-id id
+           :max-v      (dec version-count)}
+          (->> (get-reflect-versions db id)
+               (map #(let [{:keys [number] :as version-data}
+                           (get-version-data db wsid %)]
+                       [(str number) version-data]))))))
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
@@ -316,7 +339,9 @@
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
-     "r"  (get-reflect-data db id)}))
+     "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
+            (get-reflect-data db reflect-id)
+            :locked)}))
 ;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
 ;; - find out how many versions there are and put them in :max-v
 ;; - that's all for now.
@@ -448,7 +473,8 @@
           qht-txreq
           [{:db/id       "qaid"
             :qa/question "htid"
-            :qa/answer   "apid"}
+            :qa/answer   "apid"
+            :qa/ws       "sub-wsid"}
            {:db/id           "apid"
             :pointer/locked? true
             :pointer/target  "sub-wsid"}]
@@ -518,28 +544,38 @@
               :version/number version
               :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
+(defn- unlock-child [db version-id child-wsid]
+  [{:db/id version-id
+    :version/child "rid"}
+   {:db/id "rid"
+    :reflect/ws child-wsid}])
+
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (vec (butlast path))
+        parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
         (cond
           (and (= 1 (count path)) (= "r" (first path)))
           (unlock-reflect db wsid)
 
-          (and
-            (= :reflect (get-in wsdata (conj parent-path :type)))
-            (re-find #"\d+" (last path)))
+          (and (= parent-type :reflect) (re-find #"\d+" (last path)))
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
+
+          ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
+          (= (last parent-path) "children")
+          (unlock-child db (get-in wsdata (conj (vec (butlast parent-path))
+                                                :version-id))
+                        (get-in wsdata (conj path :target)))
 
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
-;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
-;; refer to it via :ws/reflect.
-;; Once I'm there, I can add unlocking of a version.
+;; SKETCH: If the type of the parent is :version, call unlock-child.
+;; Then just add a :version/child "rid", :reflect/ws child-wsid.
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -708,19 +744,28 @@
   (in-ns 'jursey.core)
 
 
+  (d/pull (d/db conn) '[:version/child] 17592186045458)
+
+
   ;;;; Scenario: Reflection
+
+  (stacktrace/e)
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
       (run [:unlock "r"])
-      )
+
+
+      (run [:unlock "r.1"])
+      (run [:unlock "r.1.children.0"]))
+
+  (run [:unlock "r.1.children.0.0"])
 
   (run [:unlock "r.0"])
-  (run [:unlock "r.1"])
+
   (run [:unlock "r.2"])
   (run [:unlock "r.3"])
   (run [:unlock "r.4"])
