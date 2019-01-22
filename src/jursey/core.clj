@@ -322,11 +322,18 @@
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
+;; TODO: Don't show and forbid to unlock the parent if it is a root
+;; question's pseudo-workspace. (RM 2019-01-22)
 (defn get-reflect-data [db id]
-  (let [wsid (sget-in (d/entity db id) [:reflect/ws :db/id])
+  (let [{{wsid :db/id} :reflect/ws
+         {parent-reflect-id :db/id} :reflect/parent} (d/entity db id)
         version-count (count (get-ws-txs db wsid))]
+    (assert wsid)
     (into {:type       :reflect
            :reflect-id id
+           "parent"    (if parent-reflect-id
+                         (get-reflect-data db parent-reflect-id)
+                         :locked)
            :max-v      (dec version-count)}
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
@@ -347,7 +354,6 @@
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
    "r"  (sget wsdata "r")})
-;; ✔ SKETCH: Needs to output "r" entry.
 
 
 ;;;; Copying hypertext
@@ -547,6 +553,19 @@
    {:db/id "rid"
     :reflect/ws child-wsid}])
 
+(defn- unlock-parent [db reflect-id]
+  (let [parent-wsid (d/q '[:find ?p .
+                           :in $ ?r
+                           :where
+                           [?r :reflect/ws ?w]
+                           [?qa :qa/ws ?w]
+                           [?p :ws/sub-qa ?qa]]
+                         db reflect-id)]
+    [{:db/id reflect-id
+      :reflect/parent "rid"}
+     {:db/id "rid"
+      :reflect/ws parent-wsid}]))
+
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
@@ -558,7 +577,10 @@
           (and (= 1 (count path)) (= "r" (first path)))
           (unlock-reflect db wsid)
 
-          (and (= parent-type :reflect) (re-find #"\d+" (last path)))
+          (= (last path) "parent")
+          (unlock-parent db (get-in wsdata (conj parent-path :reflect-id)))
+
+          (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
 
@@ -753,10 +775,23 @@
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "r"])
+      (run [:unlock "r"]))
 
-      (run [:unlock "r.1"])
-      (run [:unlock "r.1.children.0"]))
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "r"]))
+
+  (run [:unlock "r.parent"])
+  (run [:unlock "r.parent.0"])
+  (run [:unlock "r.parent.1"])
+  (run [:unlock "r.parent.2"])
+
+
+  (run [:unlock "r.1.children.0"])
 
   (run [:unlock "r.1.children.0.0"])
 
