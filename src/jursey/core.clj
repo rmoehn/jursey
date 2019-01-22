@@ -87,31 +87,25 @@
 ;;;; Version API
 (def --Version-API)
 
-(defn get-version-act
-  "Return the command that was issued in workspace with version `id`."
-  [db id]
-  (let [version-tx (sget-in (d/entity db id) [:version/tx :db/id])
-
-        command
-        (->> (d/q '[:find ?tx ?cmdid ?content
-                    :in $ ?v
-                    :where
-                    [?r :reflect/version ?v]
-                    [?r :reflect/ws ?ws]
-                    [?tx :tx/ws ?ws]
-                    [?tx :tx/act ?a]
-                    [?a :act/command ?cmdid]
-                    [?a :act/content ?content]]
-                  ;; Throw away all commands that led to version `id`.
-                  (d/history (d/since db version-tx))
-                  id)
-             (sort-by first)
-             (map rest)
-             (map (fn [[cid content]]
-                    [(sget (d/entity db cid) :db/ident) content]))
-             ;; Give me the first of the commands that weren't thrown away.
-             first)]
-    command))
+(defn get-version-act [db id]
+  (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
+                                   :in $ ?v
+                                   :where
+                                   [?r :reflect/version ?v]
+                                   [?r :reflect/ws ?ws]
+                                   [?v :version/tx ?tx]]
+                                 db id)
+        next-version-txid (->> (get-ws-txs db wsid)
+                               (drop-while #(not= version-txid %))
+                               second)]
+    (d/q '[:find [?command ?content]
+           :in $ ?tx
+           :where
+           [?tx :tx/act ?a]
+           [?a :act/command ?cmdident]
+           [?a :act/content ?content]
+           [?cmdident :db/ident ?command]]
+         db next-version-txid)))
 
 
 ;;;; Reflect API
@@ -290,7 +284,6 @@
   (let [{version-no :version/number
          {tx :db/id} :version/tx} (d/entity db id)
         db-at-version (d/as-of db tx)]
-    (println version-no tx)
     {:number   version-no
      :wsdata   (get-wsdata db-at-version wsid)
      :act  (get-version-act db id)
@@ -315,24 +308,6 @@
                              (get-version-data db wsid %)]
                          [number version-data])))))
     :locked))
-
-(comment
-
-  (-> (get (d/entity (d/db conn) @last-shown-wsid) :ws/reflect)
-      (select-keys #{:db/id :version/tx}))
-
-  (get-ws-txs (d/db conn) @last-shown-wsid)
-
-
-  (d/pull (d/db conn) '[*] 17592186045417)
-
-
-
-  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
-
-  (d/pull (d/db conn) '[{:ws/reflect [:reflect/version]}] @last-shown-wsid)
-
-  )
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
