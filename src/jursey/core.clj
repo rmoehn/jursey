@@ -67,20 +67,23 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
+;; TODO: Rename txs to txids where they are IDs. (RM 2019-01-23)
 (defn get-ws-txs
   "
   Caution: This might not work with a since-db."
-  [db wsid]
-  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)]
-    (->> (d/q '[:find [?tx ...]
-                :in $ ?ws
-                :where
-                [?tx :tx/ws ?ws]
-                (not-join [?tx]
-                          [?tx :tx/act ?a]
-                          [?a :act/command :act.command/reply])]
-              (d/history db) wsid)
-         sort
+  [db wsid & [{:keys [include-reply-tx?] :or {include-reply-tx? false}}]]
+  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)
+        rest-txs (sort (d/q '[:find [?tx ...]
+                              :in $ ?ws
+                              :where
+                              [?tx :tx/ws ?ws]]
+                            (d/history db) wsid))
+        last-command (sget-in (d/entity db (last rest-txs))
+                              [:tx/act :act/command])]
+    (->> (if (and (not include-reply-tx?)
+                  (= last-command :act.command/reply))
+           (butlast rest-txs)
+           rest-txs)
          (cons first-tx)
          vec)))
 
@@ -96,17 +99,18 @@
                                    [?r :reflect/ws ?ws]
                                    [?v :version/tx ?tx]]
                                  db id)
-        next-version-txid (->> (get-ws-txs db wsid)
+        next-version-txid (->> (get-ws-txs db wsid {:include-reply-tx? true})
                                (drop-while #(not= version-txid %))
                                second)]
-    (d/q '[:find [?command ?content]
-           :in $ ?tx
-           :where
-           [?tx :tx/act ?a]
-           [?a :act/command ?cmdident]
-           [?a :act/content ?content]
-           [?cmdident :db/ident ?command]]
-         db next-version-txid)))
+    (when next-version-txid
+      (d/q '[:find [?command ?content]
+             :in $ ?tx
+             :where
+             [?tx :tx/act ?a]
+             [?a :act/command ?cmdident]
+             [?a :act/content ?content]
+             [?cmdident :db/ident ?command]]
+           db next-version-txid))))
 
 
 ;;;; Reflect API
@@ -280,35 +284,64 @@
          (render-htdata (sget qadata "a")))})
 
 (declare get-wsdata)
+(declare get-reflect-data)
 
+;; TODO: Make it consistent where (caller/called) and how arguments are
+;; passed, destructured and verified. (RM 2019-01-22)
+(defn get-child-data [db
+                      {version-id :db/id}
+                      {{sub-wsid :db/id} :qa/ws}]
+  (assert (and version-id sub-wsid))
+  (let [base {:type       :child
+              :target     sub-wsid}
+        child-reflect-id (d/q '[:find ?r .
+                                :in $ ?v ?w
+                                :where
+                                [?v :version/child ?r]
+                                [?r :reflect/ws ?w]]
+                              db version-id sub-wsid)]
+    (if child-reflect-id
+      ;; TODO: :reflect → :target? (RM 2019-01-22)
+      (merge base (get-reflect-data db child-reflect-id)
+             {:locked? false})
+      (assoc base :locked? true))))
+
+;; TODO: It might make sense to rename :reflect-id and :version-id to :target
+;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
-         {tx :db/id} :version/tx} (d/entity db id)
+         {tx :db/id} :version/tx
+         :as version} (d/entity db id)
         db-at-version (d/as-of db tx)]
-    {:number   version-no
-     :wsdata   (get-wsdata db-at-version wsid)
-     :act  (get-version-act db id)
-     :children (into {}
-                     (map-indexed (fn [i _] [i :locked])
-                                  (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
-;; For the children I need to get the right number/index. Actually I only
-;; need to find out how many children there were at the time. – For now! Then
-;; when I implement unlocking of children, I have to do more.
+    {:type      :version
+     :number    version-no
+     :version-id id
+     :wsdata    (get-wsdata db-at-version wsid)
+     :act       (get-version-act db id)
+     "children" (into {}
+                      (string-indexed-map #(get-child-data db version %)
+                                          (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
-(defn get-reflect-data [db wsid]
-  (if-let [reflect-id (get-in (d/entity db wsid) [:ws/reflect :db/id])]
-    (let [version-count (count (get-ws-txs db wsid))]
-      (into {:type       :reflect
-             :reflect-id reflect-id
-             :max-v      (dec version-count)}
-            (->> (get-reflect-versions db reflect-id)
-                 (map #(let [{:keys [number] :as version-data}
-                             (get-version-data db wsid %)]
-                         [number version-data])))))
-    :locked))
+;; TODO: Don't show and forbid to unlock the parent if it is a root
+;; question's pseudo-workspace. (RM 2019-01-22)
+(defn get-reflect-data [db id]
+  (let [{{wsid :db/id} :reflect/ws
+         {parent-reflect-id :db/id} :reflect/parent} (d/entity db id)
+        version-count (count (get-ws-txs db wsid))]
+    (assert wsid)
+    (into {:type       :reflect
+           :reflect-id id
+           "parent"    (if parent-reflect-id
+                         (get-reflect-data db parent-reflect-id)
+                         :locked)
+           :max-v      (dec version-count)}
+          (->> (get-reflect-versions db id)
+               (map #(let [{:keys [number] :as version-data}
+                           (get-version-data db wsid %)]
+                       [(str number) version-data]))))))
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
@@ -316,16 +349,14 @@
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
-     "r"  (get-reflect-data db id)}))
-;; ✔ SKETCH: If the cur. ws has a :ws/reflect entry,
-;; - find out how many versions there are and put them in :max-v
-;; - that's all for now.
+     "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
+            (get-reflect-data db reflect-id)
+            :locked)}))
 
 (defn render-wsdata [wsdata]
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
    "r"  (sget wsdata "r")})
-;; ✔ SKETCH: Needs to output "r" entry.
 
 
 ;;;; Copying hypertext
@@ -448,7 +479,8 @@
           qht-txreq
           [{:db/id       "qaid"
             :qa/question "htid"
-            :qa/answer   "apid"}
+            :qa/answer   "apid"
+            :qa/ws       "sub-wsid"}
            {:db/id           "apid"
             :pointer/locked? true
             :pointer/target  "sub-wsid"}]
@@ -510,6 +542,7 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
+;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
 (defn- unlock-version [db reflect-id version]
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
@@ -518,28 +551,54 @@
               :version/number version
               :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
 
+(defn- unlock-child [db version-id child-wsid]
+  [{:db/id version-id
+    :version/child "rid"}
+   {:db/id "rid"
+    :reflect/ws child-wsid}])
+
+(defn- unlock-parent [db reflect-id]
+  (let [parent-wsid (d/q '[:find ?p .
+                           :in $ ?r
+                           :where
+                           [?r :reflect/ws ?w]
+                           [?qa :qa/ws ?w]
+                           [?p :ws/sub-qa ?qa]]
+                         db reflect-id)]
+    [{:db/id reflect-id
+      :reflect/parent "rid"}
+     {:db/id "rid"
+      :reflect/ws parent-wsid}]))
+
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (vec (butlast path))
+        parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
         (cond
           (and (= 1 (count path)) (= "r" (first path)))
           (unlock-reflect db wsid)
 
-          (and
-            (= :reflect (get-in wsdata (conj parent-path :type)))
-            (re-find #"\d+" (last path)))
+          (= (last path) "parent")
+          (unlock-parent db (get-in wsdata (conj parent-path :reflect-id)))
+
+          (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
+
+          ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
+          (= (last parent-path) "children")
+          (unlock-child db (get-in wsdata (conj (vec (butlast parent-path))
+                                                :version-id))
+                        (get-in wsdata (conj path :target)))
 
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
-;; ✔ SKETCH: If the pointer is "r", add a :reflect/ws referring to cur. ws and
-;; refer to it via :ws/reflect.
-;; Once I'm there, I can add unlocking of a version.
+;; SKETCH: If the type of the parent is :version, call unlock-child.
+;; Then just add a :version/child "rid", :reflect/ws child-wsid.
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
@@ -595,7 +654,7 @@
           unwait-txreq
 
           [{:db/id       "actid"
-            :act/command :act.command/ask
+            :act/command :act.command/reply
             :act/content answer}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -710,17 +769,44 @@
 
   ;;;; Scenario: Reflection
 
+  (stacktrace/e)
+
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "r"])
-      )
+      (run [:unlock "r"]))
+
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.0.a"]))
+
+  (run [:unlock "r.parent"])
+  (run [:unlock "r.parent.2"])
+  (run [:unlock "r.parent.2.children.0"])
+  ;; This should not be possible. At parent v2 child v1 didn't exist yet.
+  (run [:unlock "r.parent.2.children.0.1"])
+
+  (run [:unlock "q.0"])
+  (run [:reply "Austin"])
+  (run [:unlock "r"])
+  (run [:unlock "r.4"])
+  (run [:unlock "r.4.children.0"])
+  (run [:unlock "r.4.children.0.1"])
+
+  (run [:unlock "r.4.children.0.7"])
+
+
+  (run [:unlock "r.1.children.0"])
+
+  (run [:unlock "r.1.children.0.0"])
 
   (run [:unlock "r.0"])
-  (run [:unlock "r.1"])
+
   (run [:unlock "r.2"])
   (run [:unlock "r.3"])
   (run [:unlock "r.4"])
@@ -734,7 +820,7 @@
         ts (map d/tx->t tids)
         all-ts (cons (dec (first ts)) ts)]
     (pprint/pprint (map #(render-wsdata (get-wsdata (d/as-of (d/db conn) %)
-                                       @last-shown-wsid))
+                                                    @last-shown-wsid))
                         all-ts)))
 
 
@@ -796,32 +882,32 @@
   (run [:unlock "q.0"])
   (run [:unlock "sq.0.a"])
   (run [:reply "I think $q.0."])
-  (run [:unlock "sq.0.a.0"])
+  (run [:unlock "sq.0.a.0"]))
 
 
-  ;; TODO tests:
-  ;; - Asking or replying [with [nested] hypertext].
-  ;; - Pointing to nested hypertext ($sq.0.0).
+;; TODO tests:
+;; - Asking or replying [with [nested] hypertext].
+;; - Pointing to nested hypertext ($sq.0.0).
 
 
-  ;;;; Reflection – gas phase
+;;;; Reflection – gas phase
 
-  ;; Find out what the user wants to do with reflection. Derive a small set of
-  ;; operations/available pointers etc. to enable that.
+;; Find out what the user wants to do with reflection. Derive a small set of
+;; operations/available pointers etc. to enable that.
 
 
-  ;;;; Archive
+;;;; Archive
 
-  ;; Example of what I'm not going to support. One can't refer to input/path
-  ;; pointers, only to output/number pointers. This is not a limitation, because
-  ;; input pointers can only refer to something that is already in the workspace.
-  ;; So one can just refer to that directly.
-  {"q"  "What is the capital of $0?"
-   "sq" {"0" {"q" "What is the capital city of &q.0?"
-              "a" :locked}
-         "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
+;; Example of what I'm not going to support. One can't refer to input/path
+;; pointers, only to output/number pointers. This is not a limitation, because
+;; input pointers can only refer to something that is already in the workspace.
+;; So one can just refer to that directly.
+{"q"  "What is the capital of $0?"
+ "sq" {"0" {"q" "What is the capital city of &q.0?"
+            "a" :locked}
+       "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-  )
+
 
 (def --Tools)
 
