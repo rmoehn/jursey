@@ -78,7 +78,7 @@
                               :where
                               [?tx :tx/ws ?ws]]
                             (d/history db) wsid))
-        last-command (sget-in (d/entity db (last rest-txs))
+        last-command (get-in (d/entity db (last rest-txs))
                               [:tx/act :act/command])]
     (->> (if (and (not include-reply-tx?)
                   (= last-command :act.command/reply))
@@ -325,12 +325,21 @@
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
+;; Note on reachability: It is important to pass the
+;; reachable-db/db-at-version only in specific places, because it might not
+;; contain the necessary reflection structures.
 ;; TODO: Don't show and forbid to unlock the parent if it is a root
 ;; question's pseudo-workspace. (RM 2019-01-22)
+;; TODO: Make sure that the :version/tx and :reflect/reachable are
+;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
 (defn get-reflect-data [db id]
   (let [{{wsid :db/id} :reflect/ws
-         {parent-reflect-id :db/id} :reflect/parent} (d/entity db id)
-        version-count (count (get-ws-txs db wsid))]
+         {parent-reflect-id :db/id} :reflect/parent
+         {reachable-tx-id :db/id} :reflect/reachable} (d/entity db id)
+        reachable-db (if reachable-tx-id
+                       (d/as-of db reachable-tx-id)
+                       db)
+        version-count (count (get-ws-txs reachable-db wsid))]
     (assert wsid)
     (into {:type       :reflect
            :reflect-id id
@@ -555,20 +564,28 @@
   [{:db/id version-id
     :version/child "rid"}
    {:db/id "rid"
-    :reflect/ws child-wsid}])
+    :reflect/ws child-wsid
+    :reflect/reachable (sget-in (d/entity db version-id)
+                                [:version/tx :db/id])}])
 
 (defn- unlock-parent [db reflect-id]
-  (let [parent-wsid (d/q '[:find ?p .
-                           :in $ ?r
-                           :where
-                           [?r :reflect/ws ?w]
-                           [?qa :qa/ws ?w]
-                           [?p :ws/sub-qa ?qa]]
-                         db reflect-id)]
+  (let [[child-wsid parent-wsid]
+        (d/q '[:find [?w ?p]
+               :in $ ?r
+               :where
+               [?r :reflect/ws ?w]
+               [?qa :qa/ws ?w]
+               [?p :ws/sub-qa ?qa]]
+             db reflect-id)
+        child-created-tx (first (get-ws-txs db child-wsid))
+        reachable-tx (->> (get-ws-txs db parent-wsid)
+                          (filter #(< % child-created-tx))
+                          last)]
     [{:db/id reflect-id
       :reflect/parent "rid"}
      {:db/id "rid"
-      :reflect/ws parent-wsid}]))
+      :reflect/ws parent-wsid
+      :reflect/reachable reachable-tx}]))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
@@ -785,8 +802,9 @@
       (run [:ask "Why do you feed your dog whipped cream?"])
       (run [:unlock "sq.0.a"]))
 
+  (run [:unlock "r"])
   (run [:unlock "r.parent"])
-  (run [:unlock "r.parent.2"])
+  (run [:unlock "r.parent.0"])
   (run [:unlock "r.parent.2.children.0"])
   ;; This should not be possible. At parent v2 child v1 didn't exist yet.
   (run [:unlock "r.parent.2.children.0.1"])
