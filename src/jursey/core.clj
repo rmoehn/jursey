@@ -67,20 +67,23 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
+;; TODO: Rename txs to txids where they are IDs. (RM 2019-01-23)
 (defn get-ws-txs
   "
   Caution: This might not work with a since-db."
-  [db wsid]
-  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)]
-    (->> (d/q '[:find [?tx ...]
-                :in $ ?ws
-                :where
-                [?tx :tx/ws ?ws]
-                (not-join [?tx]
-                          [?tx :tx/act ?a]
-                          [?a :act/command :act.command/reply])]
-              (d/history db) wsid)
-         sort
+  [db wsid & [{:keys [include-reply-tx?] :or {include-reply-tx? false}}]]
+  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)
+        rest-txs (sort (d/q '[:find [?tx ...]
+                              :in $ ?ws
+                              :where
+                              [?tx :tx/ws ?ws]]
+                            (d/history db) wsid))
+        last-command (sget-in (d/entity db (last rest-txs))
+                              [:tx/act :act/command])]
+    (->> (if (and (not include-reply-tx?)
+                  (= last-command :act.command/reply))
+           (butlast rest-txs)
+           rest-txs)
          (cons first-tx)
          vec)))
 
@@ -96,7 +99,7 @@
                                    [?r :reflect/ws ?ws]
                                    [?v :version/tx ?tx]]
                                  db id)
-        next-version-txid (->> (get-ws-txs db wsid)
+        next-version-txid (->> (get-ws-txs db wsid {:include-reply-tx? true})
                                (drop-while #(not= version-txid %))
                                second)]
     (when next-version-txid
@@ -539,6 +542,7 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
+;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
 (defn- unlock-version [db reflect-id version]
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
@@ -650,7 +654,7 @@
           unwait-txreq
 
           [{:db/id       "actid"
-            :act/command :act.command/ask
+            :act/command :act.command/reply
             :act/content answer}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -763,9 +767,6 @@
   (in-ns 'jursey.core)
 
 
-  (d/pull (d/db conn) '[:version/child] 17592186045458)
-
-
   ;;;; Scenario: Reflection
 
   (stacktrace/e)
@@ -782,13 +783,22 @@
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "r"]))
+      (run [:unlock "sq.0.a"]))
 
   (run [:unlock "r.parent"])
-  (run [:unlock "r.parent.0"])
-  (run [:unlock "r.parent.1"])
   (run [:unlock "r.parent.2"])
+  (run [:unlock "r.parent.2.children.0"])
+  ;; This should not be possible. At parent v2 child v1 didn't exist yet.
+  (run [:unlock "r.parent.2.children.0.1"])
+
+  (run [:unlock "q.0"])
+  (run [:reply "Austin"])
+  (run [:unlock "r"])
+  (run [:unlock "r.4"])
+  (run [:unlock "r.4.children.0"])
+  (run [:unlock "r.4.children.0.1"])
+
+  (run [:unlock "r.4.children.0.7"])
 
 
   (run [:unlock "r.1.children.0"])
