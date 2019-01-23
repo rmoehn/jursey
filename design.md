@@ -35,11 +35,23 @@
     - See also scenarios/06-reflect-root-earlier-reflect.edn.
 
 - Reachability:
-    - From an "r" entry one can reach anything that happened up to the "r"'s
-      `:reflection/ws`'s transaction time. The people of the past cannot look
-      into their future, even though it has happened since then.
+    - The people of the past cannot look into their future, even though it has
+      happened since then.
+    - x.parent, where x is the workspace belonging to the parent's sub-question
+      s: Everything that led to x.0. Ie. the parent without an entry for s, but
+      including the [:ask s]. This corresponds most closely to a subroutine call
+      examining its context and the call stack.
+    - version: Everything that led to that version.
+    - top-level reflect: Everything that led to the reflect's workspace's
+      current version plus that current version. If I wasn't able to reach the
+      current version, I couldn't reflect a child immediately after a
+      sub-question unlock returns, for example.
+    - pointer to a copy of a top-level reflect: Everything before the first copy
+      of that reflect was made.
+    - :version/tx and :reflect/reachable must be monotonically decreasing on
+      every branch of the reflection tree.
     - See also the rambling comments at the bottom of
-      scenarios/06-reflect-ask-reply.edn.
+      scenarios/07-reflect-ask-reply.edn.
 
 - Putting a pointer at a reflection structure in a root answer.
     - Have to be careful not to automatically unlock any reflection entries.
