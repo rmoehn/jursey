@@ -261,7 +261,7 @@ C2.1
 ;; didn't even have a value for its :ws/reflection attribute (otherwise the
 ;; "r" entry would have been rendered unlocked). So when it makes the
 ;; pointer, it has to fabricate a reflection structure. It doesn't appear
-;; unlocked, becauser :pointer/locked? true. This is a bit ugly.
+;; unlocked, because :pointer/locked? true. This is a bit ugly.
 ;; All in all the question is: Can we reach from the laundered r everything
 ;; that was reachable at the time or everything that is reachable now?
 ;; Everything that was reachable at the time makes more sense theoretically.
