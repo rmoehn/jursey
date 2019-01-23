@@ -352,6 +352,30 @@
                            (get-version-data db wsid %)]
                        [(str number) version-data]))))))
 
+(declare render-reflect-data)
+(declare render-wsdata)
+
+;; TODO: Maybe group all get- and all render- methods together. (RM 2019-01-24)
+(defn render-version-data [{:keys [act wsdata] children "children"}]
+  {:ws       (render-wsdata wsdata)
+   :children (plumbing/map-vals (fn [c]
+                                  (if (get c :locked?)
+                                    :locked
+                                    (render-reflect-data c))) children)
+   :act      act})
+
+;; TODO: Maybe I can remove the "data" from the get- and render- functions.
+;; What they return and accept is obvious from their argument. (RM 2019-01-24)
+(defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
+  (let [rendered-versions (->> reflect-data
+                               (filter (fn [[k _]] (re-matches #"\d+" (str k))))
+                               (plumbing/map-vals render-version-data))]
+    (into {:max-v   max-v
+           "parent" (if (= parent :locked)
+                      :locked
+                      (render-reflect-data parent))}
+          rendered-versions)))
+
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
@@ -362,10 +386,12 @@
             (get-reflect-data db reflect-id)
             :locked)}))
 
-(defn render-wsdata [wsdata]
+(defn render-wsdata [{reflect-data "r" :as wsdata}]
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
-   "r"  (sget wsdata "r")})
+   "r"  (if (= reflect-data :locked)
+          :locked
+          (render-reflect-data (sget wsdata "r")))})
 
 
 ;;;; Copying hypertext
