@@ -76,6 +76,10 @@
  :db/isComponent true
  :db/cardinality :db.cardinality/many}
 
+{:db/ident     :reflect/reachable
+ :db/valueType :db.type/ref ; Maybe tx
+ :db/cardinality :db.cardinality/one}
+
 ;;;; version
 
 {:db/ident :version/number
