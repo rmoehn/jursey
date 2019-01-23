@@ -778,73 +778,48 @@
 
 (comment
 
-  ;;;; Use the REBL
+  ;;;; Tools
 
   (rebl/ui)
   (in-ns 'jursey.core)
-
-
-  ;;;; Scenario: Reflection
-
   (stacktrace/e)
 
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "r"]))
+
+  ;;;; Scenario: Reflection root workspace child – parent
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"]))
-
-  (run [:unlock "r"])
-  (run [:unlock "r.parent"])
-  (run [:unlock "r.parent.0"])
-  (run [:unlock "r.parent.2.children.0"])
-  ;; This should not be possible. At parent v2 child v1 didn't exist yet.
-  (run [:unlock "r.parent.2.children.0.1"])
-
-  (run [:unlock "q.0"])
-  (run [:reply "Austin"])
-  (run [:unlock "r"])
-  (run [:unlock "r.4"])
-  (run [:unlock "r.4.children.0"])
-  (run [:unlock "r.4.children.0.1"])
-
-  (run [:unlock "r.4.children.0.7"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:reply "Austin"])
+      (run [:unlock "r"])
+      (run [:unlock "r.4"])
+      (run [:unlock "r.4.children.0"])
+      (run [:unlock "r.4.children.0.0"])
+      (run [:unlock "r.4.children.0.1"])
+      (run [:unlock "r.4.children.0.parent"])
+      (run [:unlock "r.4.children.0.parent.0"]))
 
 
-  (run [:unlock "r.1.children.0"])
+  ;;;; Scenario: Reflection sub-question parent – child – parent
 
-  (run [:unlock "r.1.children.0.0"])
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.1.a"])
+      (run [:unlock "r"])
+      (run [:unlock "r.parent"])
+      (run [:unlock "r.parent.1"])
+      (run [:unlock "r.parent.1.children.0"])
+      (run [:unlock "r.parent.1.children.0.0"])
+      (run [:unlock "r.parent.1.children.0.parent"])
+      (run [:unlock "r.parent.1.children.0.parent.0"]))
 
-  (run [:unlock "r.0"])
-
-  (run [:unlock "r.2"])
-  (run [:unlock "r.3"])
-  (run [:unlock "r.4"])
-
-
-  (let [tids (d/q '[:find [?tx ...]
-                    :in $ ?ws
-                    :where
-                    [?tx :tx/ws ?ws]]
-                  (d/db conn) @last-shown-wsid)
-        ts (map d/tx->t tids)
-        all-ts (cons (dec (first ts)) ts)]
-    (pprint/pprint (map #(render-wsdata (get-wsdata (d/as-of (d/db conn) %)
-                                                    @last-shown-wsid))
-                        all-ts)))
-
-
-
-
-  (render-wsdata (get-wsdata (d/db conn) @last-shown-wsid))
 
   ;;;; Scenario: Pointer 1
 
