@@ -78,7 +78,7 @@
                               :where
                               [?tx :tx/ws ?ws]]
                             (d/history db) wsid))
-        last-command (sget-in (d/entity db (last rest-txs))
+        last-command (get-in (d/entity db (last rest-txs))
                               [:tx/act :act/command])]
     (->> (if (and (not include-reply-tx?)
                   (= last-command :act.command/reply))
@@ -313,24 +313,44 @@
          {tx :db/id} :version/tx
          :as version} (d/entity db id)
         db-at-version (d/as-of db tx)]
-    {:type      :version
-     :number    version-no
+    {:type       :version
+     :number     version-no
      :version-id id
-     :wsdata    (get-wsdata db-at-version wsid)
-     :act       (get-version-act db id)
-     "children" (into {}
-                      (string-indexed-map #(get-child-data db version %)
-                                          (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+     :wsdata     (get-wsdata db-at-version wsid)
+     "act"      (get-version-act db id)
+     "children"  (into {}
+                       (string-indexed-map #(get-child-data db version %)
+                                           (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+
+(declare render-reflect-data)
+(declare render-wsdata)
+
+(defn render-version-data [{:keys [wsdata] children "children" act "act"}]
+  {:ws        (render-wsdata wsdata)
+   "children" (plumbing/map-vals (fn [c]
+                                   (if (get c :locked?)
+                                     :locked
+                                     (render-reflect-data c))) children)
+   "act"      act})
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
 ;; with a dash.
+;; Note on reachability: It is important to pass the
+;; reachable-db/db-at-version only in specific places, because it might not
+;; contain the necessary reflection structures.
 ;; TODO: Don't show and forbid to unlock the parent if it is a root
 ;; question's pseudo-workspace. (RM 2019-01-22)
+;; TODO: Make sure that the :version/tx and :reflect/reachable are
+;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
 (defn get-reflect-data [db id]
   (let [{{wsid :db/id} :reflect/ws
-         {parent-reflect-id :db/id} :reflect/parent} (d/entity db id)
-        version-count (count (get-ws-txs db wsid))]
+         {parent-reflect-id :db/id} :reflect/parent
+         {reachable-tx-id :db/id} :reflect/reachable} (d/entity db id)
+        reachable-db (if reachable-tx-id
+                       (d/as-of db reachable-tx-id)
+                       db)
+        version-count (count (get-ws-txs reachable-db wsid))]
     (assert wsid)
     (into {:type       :reflect
            :reflect-id id
@@ -343,6 +363,18 @@
                            (get-version-data db wsid %)]
                        [(str number) version-data]))))))
 
+;; TODO: Maybe I can remove the "data" from the get- and render- functions.
+;; What they return and accept is obvious from their argument. (RM 2019-01-24)
+(defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
+  (let [rendered-versions (->> reflect-data
+                               (filter (fn [[k _]] (re-matches #"\d+" (str k))))
+                               (plumbing/map-vals render-version-data))]
+    (into {:max-v   max-v
+           "parent" (if (= parent :locked)
+                      :locked
+                      (render-reflect-data parent))}
+          rendered-versions)))
+
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
          sub-qas :ws/sub-qa}
@@ -353,10 +385,12 @@
             (get-reflect-data db reflect-id)
             :locked)}))
 
-(defn render-wsdata [wsdata]
+(defn render-wsdata [{reflect-data "r" :as wsdata}]
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
-   "r"  (sget wsdata "r")})
+   "r"  (if (= reflect-data :locked)
+          :locked
+          (render-reflect-data (sget wsdata "r")))})
 
 
 ;;;; Copying hypertext
@@ -555,20 +589,28 @@
   [{:db/id version-id
     :version/child "rid"}
    {:db/id "rid"
-    :reflect/ws child-wsid}])
+    :reflect/ws child-wsid
+    :reflect/reachable (sget-in (d/entity db version-id)
+                                [:version/tx :db/id])}])
 
 (defn- unlock-parent [db reflect-id]
-  (let [parent-wsid (d/q '[:find ?p .
-                           :in $ ?r
-                           :where
-                           [?r :reflect/ws ?w]
-                           [?qa :qa/ws ?w]
-                           [?p :ws/sub-qa ?qa]]
-                         db reflect-id)]
+  (let [[child-wsid parent-wsid]
+        (d/q '[:find [?w ?p]
+               :in $ ?r
+               :where
+               [?r :reflect/ws ?w]
+               [?qa :qa/ws ?w]
+               [?p :ws/sub-qa ?qa]]
+             db reflect-id)
+        child-created-tx (first (get-ws-txs db child-wsid))
+        reachable-tx (->> (get-ws-txs db parent-wsid)
+                          (filter #(< % child-created-tx))
+                          last)]
     [{:db/id reflect-id
       :reflect/parent "rid"}
      {:db/id "rid"
-      :reflect/ws parent-wsid}]))
+      :reflect/ws parent-wsid
+      :reflect/reachable reachable-tx}]))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
@@ -761,72 +803,48 @@
 
 (comment
 
-  ;;;; Use the REBL
+  ;;;; Tools
 
   (rebl/ui)
   (in-ns 'jursey.core)
-
-
-  ;;;; Scenario: Reflection
-
   (stacktrace/e)
 
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "r"]))
+
+  ;;;; Scenario: Reflection root workspace child – parent
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"]))
-
-  (run [:unlock "r.parent"])
-  (run [:unlock "r.parent.2"])
-  (run [:unlock "r.parent.2.children.0"])
-  ;; This should not be possible. At parent v2 child v1 didn't exist yet.
-  (run [:unlock "r.parent.2.children.0.1"])
-
-  (run [:unlock "q.0"])
-  (run [:reply "Austin"])
-  (run [:unlock "r"])
-  (run [:unlock "r.4"])
-  (run [:unlock "r.4.children.0"])
-  (run [:unlock "r.4.children.0.1"])
-
-  (run [:unlock "r.4.children.0.7"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:reply "Austin"])
+      (run [:unlock "r"])
+      (run [:unlock "r.4"])
+      (run [:unlock "r.4.children.0"])
+      (run [:unlock "r.4.children.0.0"])
+      (run [:unlock "r.4.children.0.1"])
+      (run [:unlock "r.4.children.0.parent"])
+      (run [:unlock "r.4.children.0.parent.0"]))
 
 
-  (run [:unlock "r.1.children.0"])
+  ;;;; Scenario: Reflection sub-question parent – child – parent
 
-  (run [:unlock "r.1.children.0.0"])
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.1.a"])
+      (run [:unlock "r"])
+      (run [:unlock "r.parent"])
+      (run [:unlock "r.parent.1"])
+      (run [:unlock "r.parent.1.children.0"])
+      (run [:unlock "r.parent.1.children.0.0"])
+      (run [:unlock "r.parent.1.children.0.parent"])
+      (run [:unlock "r.parent.1.children.0.parent.0"]))
 
-  (run [:unlock "r.0"])
-
-  (run [:unlock "r.2"])
-  (run [:unlock "r.3"])
-  (run [:unlock "r.4"])
-
-
-  (let [tids (d/q '[:find [?tx ...]
-                    :in $ ?ws
-                    :where
-                    [?tx :tx/ws ?ws]]
-                  (d/db conn) @last-shown-wsid)
-        ts (map d/tx->t tids)
-        all-ts (cons (dec (first ts)) ts)]
-    (pprint/pprint (map #(render-wsdata (get-wsdata (d/as-of (d/db conn) %)
-                                                    @last-shown-wsid))
-                        all-ts)))
-
-
-
-
-  (render-wsdata (get-wsdata (d/db conn) @last-shown-wsid))
 
   ;;;; Scenario: Pointer 1
 
