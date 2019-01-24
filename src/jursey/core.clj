@@ -313,14 +313,25 @@
          {tx :db/id} :version/tx
          :as version} (d/entity db id)
         db-at-version (d/as-of db tx)]
-    {:type      :version
-     :number    version-no
+    {:type       :version
+     :number     version-no
      :version-id id
-     :wsdata    (get-wsdata db-at-version wsid)
-     :act       (get-version-act db id)
-     "children" (into {}
-                      (string-indexed-map #(get-child-data db version %)
-                                          (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+     :wsdata     (get-wsdata db-at-version wsid)
+     "act"      (get-version-act db id)
+     "children"  (into {}
+                       (string-indexed-map #(get-child-data db version %)
+                                           (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+
+(declare render-reflect-data)
+(declare render-wsdata)
+
+(defn render-version-data [{:keys [wsdata] children "children" act "act"}]
+  {:ws        (render-wsdata wsdata)
+   "children" (plumbing/map-vals (fn [c]
+                                   (if (get c :locked?)
+                                     :locked
+                                     (render-reflect-data c))) children)
+   "act"      act})
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
@@ -351,18 +362,6 @@
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
                        [(str number) version-data]))))))
-
-(declare render-reflect-data)
-(declare render-wsdata)
-
-;; TODO: Maybe group all get- and all render- methods together. (RM 2019-01-24)
-(defn render-version-data [{:keys [act wsdata] children "children"}]
-  {:ws       (render-wsdata wsdata)
-   :children (plumbing/map-vals (fn [c]
-                                  (if (get c :locked?)
-                                    :locked
-                                    (render-reflect-data c))) children)
-   :act      act})
 
 ;; TODO: Maybe I can remove the "data" from the get- and render- functions.
 ;; What they return and accept is obvious from their argument. (RM 2019-01-24)
