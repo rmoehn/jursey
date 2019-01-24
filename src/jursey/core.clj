@@ -116,9 +116,9 @@
 ;;;; Reflect API
 (def --Reflect-API)
 
-(defn get-reflect-versions
+(defn get-reflect-version-ids
   "Return versions of reflect entity `id`, ordered from oldest to newest."
-  [db id]
+  [db {:keys [db/id]}]
   (->> (d/q '[:find ?tx ?v
               :in $ ?r
               :where
@@ -302,11 +302,11 @@
                               db version-id sub-wsid)]
     (if child-reflect-id
       ;; TODO: :reflect → :target? (RM 2019-01-22)
-      (merge base (get-reflect-data db child-reflect-id)
+      (merge base (get-reflect-data db (d/entity db child-reflect-id))
              {:locked? false})
       (assoc base :locked? true))))
 
-;; TODO: It might make sense to rename :reflect-id and :version-id to :target
+;; TODO: It might make sense to rename :reflect and :version-id to :target
 ;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
@@ -343,22 +343,23 @@
 ;; question's pseudo-workspace. (RM 2019-01-22)
 ;; TODO: Make sure that the :version/tx and :reflect/reachable are
 ;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
-(defn get-reflect-data [db id]
-  (let [{{wsid :db/id} :reflect/ws
-         {parent-reflect-id :db/id} :reflect/parent
-         {reachable-txid :db/id} :reflect/reachable} (d/entity db id)
-        reachable-db (if reachable-txid
+(defn get-reflect-data [db
+                        {:keys [reflect/parent]
+                         {wsid :db/id} :reflect/ws
+                         {reachable-txid :db/id} :reflect/reachable
+                         :as reflect}]
+  (let [reachable-db (if reachable-txid
                        (d/as-of db reachable-txid)
                        db)
         version-count (count (get-ws-txids reachable-db wsid))]
     (assert wsid)
     (into {:type       :reflect
-           :reflect-id id
-           "parent"    (if parent-reflect-id
-                         (get-reflect-data db parent-reflect-id)
+           :reflect reflect
+           "parent"    (if parent
+                         (get-reflect-data db parent)
                          :locked)
            :max-v      (dec version-count)}
-          (->> (get-reflect-versions db id)
+          (->> (get-reflect-version-ids db reflect)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
                        [(str number) version-data]))))))
@@ -381,8 +382,8 @@
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
-     "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
-            (get-reflect-data db reflect-id)
+     "r"  (if-let [reflect (get (d/entity db id) :ws/reflect)]
+            (get-reflect-data db reflect)
             :locked)}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
@@ -577,8 +578,8 @@
     :reflect/ws wsid}])
 
 ;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
-(defn- unlock-version [db reflect-id version]
-  (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
+(defn- unlock-version [db {reflect-id :db/id :as reflect} version]
+  (let [wsid (sget-in reflect [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
               :reflect/version "vid"}
              {:db/id      "vid"
@@ -593,7 +594,7 @@
     :reflect/reachable (sget-in (d/entity db version-id)
                                 [:version/tx :db/id])}])
 
-(defn- unlock-parent [db reflect-id]
+(defn- unlock-parent [db {reflect-id :db/id}]
   (let [[child-wsid parent-wsid]
         (d/q '[:find [?w ?p]
                :in $ ?r
@@ -624,10 +625,10 @@
           (unlock-reflect db wsid)
 
           (= (last path) "parent")
-          (unlock-parent db (get-in wsdata (conj parent-path :reflect-id)))
+          (unlock-parent db (get-in wsdata (conj parent-path :reflect)))
 
           (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
-          (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
+          (unlock-version db (get-in wsdata (conj parent-path :reflect))
                           (Integer/parseInt (last path)))
 
           ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
