@@ -19,9 +19,9 @@
 ;; ht   … hypertext
 ;; pid  … pointer entity ID
 ;; pmap … pointer map
-;; qht  … question hypertext
-;; ws   … workspace
-;; wsid … workspce entity ID
+;; qht  … question hypertext
+;; ws   … workspace
+;; wsid … workspce entity ID
 
 
 ;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout …).
@@ -230,7 +230,7 @@
   (reduce-kv string/replace s m))
 
 (defn string-indexed-map
-  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
+  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
   Curved quotation marks substitute for straight ones in this docstring."
   [f xs]
   (into {} (map-indexed (fn [i v]
@@ -301,7 +301,7 @@
                                 [?r :reflect/ws ?w]]
                               db version-id sub-wsid)]
     (if child-reflect-id
-      ;; TODO: :reflect → :target? (RM 2019-01-22)
+      ;; TODO: :reflect → :target? (RM 2019-01-22)
       (merge base (get-reflect-data db child-reflect-id)
              {:locked? false})
       (assoc base :locked? true))))
@@ -810,7 +810,7 @@
   (stacktrace/e)
 
 
-  ;;;; Scenario: Reflection root workspace child – parent
+  ;;;; Scenario: Reflection root workspace child – parent
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -908,7 +908,7 @@
 ;; - Pointing to nested hypertext ($sq.0.0).
 
 
-;;;; Reflection – gas phase
+;;;; Reflection – gas phase
 
 ;; Find out what the user wants to do with reflection. Derive a small set of
 ;; operations/available pointers etc. to enable that.
