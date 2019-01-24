@@ -60,12 +60,11 @@ is. There might be a better way to do this.
 Use REBL JAR with Leiningen
 ---------------------------
 
-First download the REBL JAR from http://rebl.cognitect.com/.
-Then this might work: https://github.com/eccentric-j/lein-rebl-example
-Otherwise:
+First download the REBL JAR from http://rebl.cognitect.com/. Then this might
+work: https://github.com/eccentric-j/lein-rebl-example Otherwise:
 
 ```
-cd <directory that contains REBL-0.9.109.jar
+cd <directory that contains REBL-0.9.109.jar>
 mvn install:install-file \
     -Dfile=REBL-0.9.109.jar \
     -DartifactId=REBL \
