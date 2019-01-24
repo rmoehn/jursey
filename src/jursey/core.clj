@@ -287,13 +287,13 @@
 (declare get-reflect-data)
 
 ;; TODO: Make it consistent where (caller/called) and how arguments are
-;; passed, destructured and verified. (RM 2019-01-22)
+;; passed, destructured and verified. See also branch abandoned/ids-to-entities
+;; (RM 2019-01-22)
 (defn get-child-data [db
                       {version-id :db/id}
                       {{sub-wsid :db/id} :qa/ws}]
   (assert (and version-id sub-wsid))
-  (let [base {:type       :child
-              :target     sub-wsid}
+  (let [base {:target sub-wsid}
         child-reflect-id (d/q '[:find ?r .
                                 :in $ ?v ?w
                                 :where
@@ -301,7 +301,6 @@
                                 [?r :reflect/ws ?w]]
                               db version-id sub-wsid)]
     (if child-reflect-id
-      ;; TODO: :reflect → :target? (RM 2019-01-22)
       (merge base (get-reflect-data db child-reflect-id)
              {:locked? false})
       (assoc base :locked? true))))
@@ -311,16 +310,17 @@
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
          {txid :db/id} :version/tx
-         :as version} (d/entity db id)
+         :as version}
+        (d/entity db id)
         db-at-version (d/as-of db txid)]
-    {:type       :version
-     :number     version-no
+    {:number     version-no
      :version-id id
      :wsdata     (get-wsdata db-at-version wsid)
-     "act"      (get-version-act db id)
+     "act"       (get-version-act db id)
      "children"  (into {}
-                       (string-indexed-map #(get-child-data db version %)
-                                           (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+                       (string-indexed-map
+                         #(get-child-data db version %)
+                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
 (declare render-reflect-data)
 (declare render-wsdata)
@@ -639,8 +639,6 @@
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
-;; SKETCH: If the type of the parent is :version, call unlock-child.
-;; Then just add a :version/child "rid", :reflect/ws child-wsid.
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
 ;; in which it happens. Because we don't need it anymore. Nobody will look at
