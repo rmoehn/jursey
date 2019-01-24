@@ -24,7 +24,8 @@
 ;; wsid … workspce entity ID
 
 
-;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout).
+;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout …).
+;; Cf. Michael Nygard: Release It!
 ;; (RM 2019-01-21)
 
 
@@ -67,24 +68,23 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
-;; TODO: Rename txs to txids where they are IDs. (RM 2019-01-23)
-(defn get-ws-txs
+(defn get-ws-txids
   "
   Caution: This might not work with a since-db."
-  [db wsid & [{:keys [include-reply-tx?] :or {include-reply-tx? false}}]]
-  (let [first-tx (->> (d/datoms db :eavt wsid) (map :tx) sort first)
-        rest-txs (sort (d/q '[:find [?tx ...]
+  [db wsid & [{:keys [include-reply-txid?] :or {include-reply-txid? false}}]]
+  (let [first-txid (->> (d/datoms db :eavt wsid) (map :tx) sort first)
+        rest-txids (sort (d/q '[:find [?tx ...]
                               :in $ ?ws
                               :where
                               [?tx :tx/ws ?ws]]
                             (d/history db) wsid))
-        last-command (get-in (d/entity db (last rest-txs))
+        last-command (get-in (d/entity db (last rest-txids))
                               [:tx/act :act/command])]
-    (->> (if (and (not include-reply-tx?)
+    (->> (if (and (not include-reply-txid?)
                   (= last-command :act.command/reply))
-           (butlast rest-txs)
-           rest-txs)
-         (cons first-tx)
+           (butlast rest-txids)
+           rest-txids)
+         (cons first-txid)
          vec)))
 
 
@@ -99,7 +99,7 @@
                                    [?r :reflect/ws ?ws]
                                    [?v :version/tx ?tx]]
                                  db id)
-        next-version-txid (->> (get-ws-txs db wsid {:include-reply-tx? true})
+        next-version-txid (->> (get-ws-txids db wsid {:include-reply-txid? true})
                                (drop-while #(not= version-txid %))
                                second)]
     (when next-version-txid
@@ -310,9 +310,9 @@
 ;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no :version/number
-         {tx :db/id} :version/tx
+         {txid :db/id} :version/tx
          :as version} (d/entity db id)
-        db-at-version (d/as-of db tx)]
+        db-at-version (d/as-of db txid)]
     {:type       :version
      :number     version-no
      :version-id id
@@ -346,11 +346,11 @@
 (defn get-reflect-data [db id]
   (let [{{wsid :db/id} :reflect/ws
          {parent-reflect-id :db/id} :reflect/parent
-         {reachable-tx-id :db/id} :reflect/reachable} (d/entity db id)
-        reachable-db (if reachable-tx-id
-                       (d/as-of db reachable-tx-id)
+         {reachable-txid :db/id} :reflect/reachable} (d/entity db id)
+        reachable-db (if reachable-txid
+                       (d/as-of db reachable-txid)
                        db)
-        version-count (count (get-ws-txs reachable-db wsid))]
+        version-count (count (get-ws-txids reachable-db wsid))]
     (assert wsid)
     (into {:type       :reflect
            :reflect-id id
@@ -583,7 +583,7 @@
               :reflect/version "vid"}
              {:db/id      "vid"
               :version/number version
-              :version/tx (-> (get-ws-txs db wsid) (nth version))}])))
+              :version/tx (-> (get-ws-txids db wsid) (nth version))}])))
 
 (defn- unlock-child [db version-id child-wsid]
   [{:db/id version-id
@@ -602,15 +602,15 @@
                [?qa :qa/ws ?w]
                [?p :ws/sub-qa ?qa]]
              db reflect-id)
-        child-created-tx (first (get-ws-txs db child-wsid))
-        reachable-tx (->> (get-ws-txs db parent-wsid)
-                          (filter #(< % child-created-tx))
+        child-created-txid (first (get-ws-txids db child-wsid))
+        reachable-txid (->> (get-ws-txids db parent-wsid)
+                          (filter #(< % child-created-txid))
                           last)]
     [{:db/id reflect-id
       :reflect/parent "rid"}
      {:db/id "rid"
       :reflect/ws parent-wsid
-      :reflect/reachable reachable-tx}]))
+      :reflect/reachable reachable-txid}]))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
