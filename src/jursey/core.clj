@@ -558,8 +558,8 @@
 ;; Note: If it should be used in all command-implementing functions,
 ;; shouldn't I just put it in their caller? Or make it a sort of wrapper?
 ;; On the one hand that would avoid repetition. On the other hand: Wrappers
-;; can make debugging harder. And currently only caller is `run`, which is in
-;; a higher layer. I could put a caller in between, but that would be ugly as
+;; can make debugging harder. And currently the only caller is `run`, which is
+;; in a higher layer. I could put a caller in between, but that would be ugly as
 ;; well. So for now leave calls to `act-txreq` in the command-implementing
 ;; functions.
 (defn act-txreq [wsid command content]
@@ -570,8 +570,7 @@
     :tx/ws  wsid
     :tx/act "actid"}])
 
-;; LATER TODO: See if I need the `db` and remove it if not. (RM 2019-01-21)
-(defn- unlock-reflect [db wsid]
+(defn- unlock-reflect [wsid]
   [{:db/id      wsid
     :ws/reflect "rid"}
    {:db/id      "rid"
@@ -620,9 +619,10 @@
         parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
+        ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
         (cond
           (and (= 1 (count path)) (= "r" (first path)))
-          (unlock-reflect db wsid)
+          (unlock-reflect wsid)
 
           (= (last path) "parent")
           (unlock-parent db (get-in wsdata (conj parent-path :reflect-id)))
@@ -631,7 +631,6 @@
           (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
                           (Integer/parseInt (last path)))
 
-          ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
           (= (last parent-path) "children")
           (unlock-child db (get-in wsdata (conj (vec (butlast parent-path))
                                                 :version-id))
@@ -811,16 +810,16 @@
   (transcriptor/run "test/scenarios.repl")
 
 
-;;;; Archive
+  ;;;; Archive
 
-;; Example of what I'm not going to support. One can't refer to input/path
-;; pointers, only to output/number pointers. This is not a limitation, because
-;; input pointers can only refer to something that is already in the workspace.
-;; So one can just refer to that directly.
-{"q"  "What is the capital of $0?"
- "sq" {"0" {"q" "What is the capital city of &q.0?"
-            "a" :locked}
-       "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
+  ;; Example of what I'm not going to support. One can't refer to input/path
+  ;; pointers, only to output/number pointers. This is not a limitation, because
+  ;; input pointers can only refer to something that is already in the workspace.
+  ;; So one can just refer to that directly.
+  {"q"  "What is the capital of $0?"
+   "sq" {"0" {"q" "What is the capital city of &q.0?"
+              "a" :locked}
+         "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
   )
 
