@@ -327,7 +327,7 @@
 (declare render-wsdata)
 
 (defn render-version-data [{:keys [wsdata] children "children" act "act"}]
-  {:ws        (render-wsdata wsdata)
+  {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
                                    (if (get c :locked?)
                                      :locked
