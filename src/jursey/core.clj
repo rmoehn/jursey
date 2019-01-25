@@ -31,7 +31,7 @@
 
 
 ;;;; Setup
-(def --Setup)  ; Workaround for a clearer project structure in IntelliJ.
+(def --Setup) ; Workaround for a clearer project structure in IntelliJ.
 
 (declare test-agent)
 (declare conn)
@@ -75,12 +75,12 @@
   [db wsid & [{:keys [include-reply-txid?] :or {include-reply-txid? false}}]]
   (let [first-txid (->> (d/datoms db :eavt wsid) (map :tx) sort first)
         rest-txids (sort (d/q '[:find [?tx ...]
-                              :in $ ?ws
-                              :where
-                              [?tx :tx/ws ?ws]]
-                            (d/history db) wsid))
+                                :in $ ?ws
+                                :where
+                                [?tx :tx/ws ?ws]]
+                              (d/history db) wsid))
         last-command (get-in (d/entity db (last rest-txids))
-                              [:tx/act :act/command])]
+                             [:tx/act :act/command])]
     (->> (if (and (not include-reply-txid?)
                   (= last-command :act.command/reply))
            (butlast rest-txids)
@@ -259,7 +259,7 @@
           (map (fn [p]
                  [(sget p :pointer/name)
                   (if (sget p :pointer/locked?)
-                    {:id (sget p :db/id)
+                    {:id      (sget p :db/id)
                      :locked? true
                      :target  (get-in p [:pointer/target :db/id])}
                     (get-htdata db (sget-in p [:pointer/target :db/id])))])
@@ -269,13 +269,13 @@
                   {{q-htid :db/id} :qa/question
                    {apid :db/id}   :qa/answer}]
   {"q" (get-htdata db q-htid)
-   "a" (let [{pid :db/id
-              locked? :pointer/locked?
+   "a" (let [{pid             :db/id
+              locked?         :pointer/locked?
               {target :db/id} :pointer/target} (d/pull db '[*] apid)]
          (if locked?
-           {:id pid
+           {:id      pid
             :locked? true
-            :target target}
+            :target  target}
            (get-htdata db target)))})
 
 (defn render-qadata [qadata]
@@ -309,9 +309,9 @@
 ;; TODO: It might make sense to rename :reflect-id and :version-id to :target
 ;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
-  (let [{version-no :version/number
+  (let [{version-no    :version/number
          {txid :db/id} :version/tx
-         :as version}
+         :as           version}
         (d/entity db id)
         db-at-version (d/as-of db txid)]
     {:number     version-no
@@ -345,9 +345,9 @@
 ;; TODO: Make sure that the :version/tx and :reflect/reachable are
 ;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
 (defn get-reflect-data [db id]
-  (let [{{wsid :db/id} :reflect/ws
+  (let [{{wsid :db/id}              :reflect/ws
          {parent-reflect-id :db/id} :reflect/parent
-         {reachable-txid :db/id} :reflect/reachable} (d/entity db id)
+         {reachable-txid :db/id}    :reflect/reachable} (d/entity db id)
         reachable-db (if reachable-txid
                        (d/as-of db reachable-txid)
                        db)
@@ -378,7 +378,7 @@
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
-         sub-qas :ws/sub-qa}
+         sub-qas      :ws/sub-qa}
         (d/pull db '[*] id)]
     {"q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
@@ -419,8 +419,8 @@
 
           :else (throw (ex-info "Don't know how to handle this pointer target."
                                 {:target target})))]
-    {:pointer/name new-name
-     :pointer/target new-target
+    {:pointer/name    new-name
+     :pointer/target  new-target
      :pointer/locked? true}))
 
 (defn map-keys-vals [f m]
@@ -581,15 +581,15 @@
   (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
     (concat [{:db/id           reflect-id
               :reflect/version "vid"}
-             {:db/id      "vid"
+             {:db/id          "vid"
               :version/number version
-              :version/tx (-> (get-ws-txids db wsid) (nth version))}])))
+              :version/tx     (-> (get-ws-txids db wsid) (nth version))}])))
 
 (defn- unlock-child [db version-id child-wsid]
-  [{:db/id version-id
+  [{:db/id         version-id
     :version/child "rid"}
-   {:db/id "rid"
-    :reflect/ws child-wsid
+   {:db/id             "rid"
+    :reflect/ws        child-wsid
     :reflect/reachable (sget-in (d/entity db version-id)
                                 [:version/tx :db/id])}])
 
@@ -604,12 +604,12 @@
              db reflect-id)
         child-created-txid (first (get-ws-txids db child-wsid))
         reachable-txid (->> (get-ws-txids db parent-wsid)
-                          (filter #(< % child-created-txid))
-                          last)]
-    [{:db/id reflect-id
+                            (filter #(< % child-created-txid))
+                            last)]
+    [{:db/id          reflect-id
       :reflect/parent "rid"}
-     {:db/id "rid"
-      :reflect/ws parent-wsid
+     {:db/id             "rid"
+      :reflect/ws        parent-wsid
       :reflect/reachable reachable-txid}]))
 
 ;; TODO: Check that the pointer is actually locked.
