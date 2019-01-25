@@ -1,0 +1,174 @@
+(use 'jursey.core)
+(require '[cognitect.transcriptor :refer (check!)])
+
+
+;;;; Scenario: Reflection root workspace child – parent
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "Why do you feed your dog whipped cream?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Austin"])
+    (run [:unlock "r"])
+    (run [:unlock "r.4"])
+    (run [:unlock "r.4.children.0"])
+    (run [:unlock "r.4.children.0.0"])
+    (run [:unlock "r.4.children.0.1"])
+    (run [:unlock "r.4.children.0.parent"])
+    (run [:unlock "r.4.children.0.parent.0"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+             "1" {"q" "Why do you feed your dog whipped cream?", "a" :locked}},
+       "r" {:max-v 10,
+            "parent" :locked,
+            "4" {:ws {"q" "What is the capital of $0?",
+                      "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                 "a" "Austin"},
+                            "1" {"q" "Why do you feed your dog whipped cream?",
+                                 "a" :locked}},
+                      "r" {:max-v 4, "parent" :locked}},
+                 "children" {"0" {:max-v 1,
+                                  "parent" {:max-v 0,
+                                            "parent" :locked,
+                                            "0" {:ws {"q" "What is the capital of $0?",
+                                                      "sq" {},
+                                                      "r" :locked},
+                                                 "children" {},
+                                                 "act" [:act.command/ask
+                                                        "What is the capital city of $q.0?"]}},
+                                  "0" {:ws {"q" "What is the capital city of $0?",
+                                            "sq" {},
+                                            "r" :locked},
+                                       "children" {},
+                                       "act" [:act.command/unlock "q.0"]},
+                                  "1" {:ws {"q" "What is the capital city of [0: Texas]?",
+                                            "sq" {},
+                                            "r" :locked},
+                                       "children" {},
+                                       "act" [:act.command/reply "Austin"]}},
+                             "1" :locked},
+                 "act" [:act.command/unlock "r.4"]}}}})
+
+
+;;;; Scenario: Reflection sub-question parent – child – parent
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "Why do you feed your dog whipped cream?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (run [:unlock "r.parent.1"])
+    (run [:unlock "r.parent.1.children.0"])
+    (run [:unlock "r.parent.1.children.0.0"])
+    (run [:unlock "r.parent.1.children.0.parent"])
+    (run [:unlock "r.parent.1.children.0.parent.0"]))
+
+(check!
+    #{{"q" "Why do you feed your dog whipped cream?",
+       "sq" {},
+       "r" {:max-v 7,
+            "parent" {:max-v 1,
+                      "parent" :locked,
+                      "1" {:ws {"q" "What is the capital of $0?",
+                                "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                           "a" :locked}},
+                                "r" :locked},
+                           "children" {"0" {:max-v 0,
+                                            "parent" {:max-v 0,
+                                                      "parent" :locked,
+                                                      "0" {:ws {"q" "What is the capital of $0?",
+                                                                "sq" {},
+                                                                "r" :locked},
+                                                           "children" {},
+                                                           "act" [:act.command/ask
+                                                                  "What is the capital city of $q.0?"]}},
+                                            "0" {:ws {"q" "What is the capital city of $0?",
+                                                      "sq" {},
+                                                      "r" :locked},
+                                                 "children" {},
+                                                 "act" nil}}},
+                           "act" [:act.command/ask
+                                  "Why do you feed your dog whipped cream?"]}}}}})
+
+
+;;;; Scenario: Pointer 1
+
+;; Tests: Replying in a root workspace with a pointer to a yet ungiven
+;; sub-answer.
+
+(set-up {:reset? true})
+(run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+(start-working conn)
+(run [:ask "What is the capital city of $q.0?"])
+(run [:reply "Just $sq.0.a."])
+
+(get-root-qas conn test-agent)
+
+(start-working conn)
+(run [:reply "Austin. Keep it [weird]."])
+
+(get-root-qas conn test-agent)
+
+(check!
+    #{'(["What is the capital of [1: Texas]?" "Just [0: Austin. Keep it [0: weird].]."])})
+
+
+;;;; Scenario: Pointer 2
+
+;; Tests: Asking a sub-question that contains a pointer to a yet ungiven
+;; answer to another sub-question.
+
+(set-up {:reset? true})
+(run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+(start-working conn)
+(doseq [command
+        [[:ask "What is the capital city of $q.0?"]
+         [:ask "What do you think about $sq.0.a?"]
+         [:unlock "sq.1.a"]
+         [:unlock "q.0"]
+         [:reply "Austin"]
+         [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
+         [:unlock "sq.1.a.0"]
+         [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
+    (run command {:trace? true})
+    (println))
+
+(get-root-qas conn test-agent)
+
+(check!
+    #{'(["What is the capital of [1: Texas]?"
+         "It is Austin. [0: Clojure/conj] happened there once."])})
+
+
+;;;; Scenario: Pointer laundering
+
+(set-up {:reset? true})
+(run-ask-root-question conn test-agent "How about [bla]?")
+
+(start-working conn)
+(run [:ask "What do you think about $q.0?"])
+(run [:unlock "q.0"])
+(run [:unlock "sq.0.a"])
+(run [:reply "I think $q.0."])
+(run [:unlock "sq.0.a.0"])
+
+(check!
+    #{{"q" "How about [0: bla]?",
+       "sq" {"0" {"q" "What do you think about $q.0?", "a" "I think [0: bla]."}},
+       "r" :locked}})
+
+
+;; TODO tests:
+;; - Asking or replying [with [nested] hypertext].
+;; - Pointing to nested hypertext ($sq.0.0).
+;; - Unlocking a grandparent.
