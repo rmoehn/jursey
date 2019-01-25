@@ -4,6 +4,7 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [cognitect.rebl :as rebl]
+            [cognitect.transcriptor :as transcriptor]
             [com.rpl.specter :as s]
             [datomic.api :as d]
             datomic-helpers
@@ -807,109 +808,7 @@
   (in-ns 'jursey.core)
   (stacktrace/e)
 
-
-  ;;;; Scenario: Reflection root workspace child – parent
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin"])
-      (run [:unlock "r"])
-      (run [:unlock "r.4"])
-      (run [:unlock "r.4.children.0"])
-      (run [:unlock "r.4.children.0.0"])
-      (run [:unlock "r.4.children.0.1"])
-      (run [:unlock "r.4.children.0.parent"])
-      (run [:unlock "r.4.children.0.parent.0"]))
-
-
-  ;;;; Scenario: Reflection sub-question parent – child – parent
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.1.a"])
-      (run [:unlock "r"])
-      (run [:unlock "r.parent"])
-      (run [:unlock "r.parent.1"])
-      (run [:unlock "r.parent.1.children.0"])
-      (run [:unlock "r.parent.1.children.0.0"])
-      (run [:unlock "r.parent.1.children.0.parent"])
-      (run [:unlock "r.parent.1.children.0.parent.0"]))
-
-
-  ;;;; Scenario: Pointer 1
-
-  ;; Tests: Replying in a root workspace with a pointer to a yet ungiven
-  ;; sub-answer.
-
-  (set-up {:reset? true})
-  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
-  (start-working conn)
-  (run [:ask "What is the capital city of $q.0?"])
-  (run [:reply "Just $sq.0.a."])
-
-  (get-root-qas conn test-agent)
-
-  (start-working conn)
-  (run [:reply "Austin. Keep it [weird]."])
-
-  (get-root-qas conn test-agent)
-
-
-  ;;;; Scenario: Pointer 2
-
-  ;; Tests: Asking a sub-question that contains a pointer to a yet ungiven
-  ;; answer to another sub-question.
-
-  (set-up {:reset? true})
-  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
-  (start-working conn)
-  (doseq [command
-          [[:ask "What is the capital city of $q.0?"]
-           [:ask "What do you think about $sq.0.a?"]
-           [:unlock "sq.1.a"]
-           [:unlock "q.0"]
-           [:reply "Austin"]
-           [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
-           [:unlock "sq.1.a.0"]
-           [:reply "It is Austin. $sq.1.a.0 happened there once."]]]
-    (run command {:trace? true})
-    (println))
-
-  (get-root-qas conn test-agent)
-
-
-  ;;;; Scenario: Pointer laundering
-
-  (set-up {:reset? true})
-  (run-ask-root-question conn test-agent "How about [bla]?")
-
-  (start-working conn)
-  (run [:ask "What do you think about $q.0?"])
-  (run [:unlock "q.0"])
-  (run [:unlock "sq.0.a"])
-  (run [:reply "I think $q.0."])
-  (run [:unlock "sq.0.a.0"]))
-
-
-;; TODO tests:
-;; - Asking or replying [with [nested] hypertext].
-;; - Pointing to nested hypertext ($sq.0.0).
-
-
-;;;; Reflection – gas phase
-
-;; Find out what the user wants to do with reflection. Derive a small set of
-;; operations/available pointers etc. to enable that.
+  (transcriptor/run "test/scenarios.repl")
 
 
 ;;;; Archive
@@ -923,7 +822,7 @@
             "a" :locked}
        "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
 
-
+  )
 
 (def --Tools)
 

@@ -6,6 +6,7 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/core.async "0.4.490"]
                  [com.cognitect/REBL "0.9.109"]
+                 [com.cognitect/transcriptor "0.1.5"]
                  [com.datomic/datomic-free "0.9.5703"]
                  [com.rpl/specter "1.1.2"]
                  [datomic-helpers "1.0.0"]
