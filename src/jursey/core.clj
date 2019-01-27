@@ -294,7 +294,7 @@
                       {version-id :db/id}
                       {{sub-wsid :db/id} :qa/ws}]
   (assert (and version-id sub-wsid))
-  (let [base {:target sub-wsid}
+  (let [base {:wsid sub-wsid}
         child-reflect-id (d/q '[:find ?r .
                                 :in $ ?v ?w
                                 :where
@@ -306,7 +306,6 @@
              {:locked? false})
       (assoc base :locked? true))))
 
-;; TODO: It might make sense to rename :reflect-id and :version-id to :target
 ;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no    :version/number
@@ -315,7 +314,7 @@
         (d/entity db id)
         db-at-version (d/as-of db txid)]
     {:number     version-no
-     :version-id id
+     :target     id
      :wsdata     (get-wsdata db-at-version wsid)
      "act"       (get-version-act db id)
      "children"  (into {}
@@ -354,7 +353,7 @@
         version-count (count (get-ws-txids reachable-db wsid))]
     (assert wsid)
     (into {:type       :reflect
-           :reflect-id id
+           :target     id
            "parent"    (if parent-reflect-id
                          (get-reflect-data db parent-reflect-id)
                          :locked)
@@ -625,16 +624,16 @@
           (unlock-reflect wsid)
 
           (= (last path) "parent")
-          (unlock-parent db (get-in wsdata (conj parent-path :reflect-id)))
+          (unlock-parent db (get-in wsdata (conj parent-path :target)))
 
           (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
-          (unlock-version db (get-in wsdata (conj parent-path :reflect-id))
+          (unlock-version db (get-in wsdata (conj parent-path :target))
                           (Integer/parseInt (last path)))
 
           (= (last parent-path) "children")
           (unlock-child db (get-in wsdata (conj (vec (butlast parent-path))
-                                                :version-id))
-                        (get-in wsdata (conj path :target)))
+                                                :target))
+                        (get-in wsdata (conj path :wsid)))
 
           :else
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
