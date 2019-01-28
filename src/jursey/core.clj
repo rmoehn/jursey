@@ -41,8 +41,8 @@
   (def test-agent "test")
 
   (let [base-uri "datomic:free://localhost:4334/"
-        db-name  "jursey"
-        db-uri   (str base-uri db-name)]
+        db-name "jursey"
+        db-uri (str base-uri db-name)]
 
     (if-not reset?
       (def conn (d/connect db-uri))
@@ -156,13 +156,37 @@
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
-(defn process-pointer [wsdata dollar-pointer]
+;; Credits: http://clj-me.cgrand.net/2011/06/17/a-flatter-cond/
+(defmacro cond-let [& clauses]
+  (when-let [[t e & cs] (seq clauses)]
+    (if (vector? t)
+      `(if-let ~t ~e (cond-let ~@cs))
+      `(if ~t ~e (cond-let ~@cs)))))
+
+(cond-let
+  [x (+ 4 5)]
+  x
+  :else
+  5)
+
+(defn get-target [db wsdata path]
+  (cond-let
+    [target (get-in wsdata (conj path :target))]
+    target
+
+    :else
+    (throw (ex-info "Don't know how to deal with this."
+                    {:wsdata wsdata :path path}))))
+
+(defn process-pointer [db wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
         path (->path pointer)]
     {:repr    dollar-pointer
      :pointer {:pointer/name    pointer
                :pointer/locked? (sget-in wsdata (conj path :locked?))
-               :pointer/target  (sget-in wsdata (conj path :target))}}))
+               :pointer/target  (get-target db wsdata path)}}))
+;; I need to separate the :pointer/target. If there is no target, I need to
+;; find out what the path means and create a target transaction map.
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
 ;; structures". That's why I call such a data structure (list of lists or maps)
@@ -186,9 +210,9 @@
 
 ;; TODO: Document this.
 ;; TODO: Find a better name for wsdata.
-(defn process-embedded [wsdata loc children]
+(defn process-embedded [db wsdata loc children]
   (let [processed-children (map-indexed (fn [i c]
-                                          (process-httree wsdata
+                                          (process-httree db wsdata
                                                           (conj loc i)
                                                           c))
                                         children)]
@@ -203,20 +227,20 @@
                                                     processed-children))
                  :hypertext/pointer (filter some? (map :pointer processed-children))})}))
 
-(defn process-httree [wsdata loc [tag & children]]
+(defn process-httree [db wsdata loc [tag & children]]
   "
   `loc` is the location/path of the current element in the syntax tree.
   'httree' means the syntax tree that results from parsing hypertext."
   (case tag
     ;; :repr is the string that will be included in the parent hypertext.
-    :text     {:repr (first children)}
-    :pointer  (process-pointer wsdata (first children))
-    :embedded (process-embedded wsdata loc children)))
+    :text {:repr (first children)}
+    :pointer (process-pointer db wsdata (first children))
+    :embedded (process-embedded db wsdata loc children)))
 
-(defn ht->txreq [wsdata ht]
+(defn ht->txreq [db wsdata ht]
   (let [;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
         httree (replace {:S :embedded} (parse-ht ht))]
-    (-> (process-httree wsdata [] httree)
+    (-> (process-httree db wsdata [] httree)
         (sget :txreq))))
 
 (comment
@@ -329,7 +353,7 @@
       :else
       (throw (ex-info "Don't know how to handle this pointer target."
                       {:target target
-                       :pull (d/pull db '[*] (sget target :db/id))})))))
+                       :pull   (d/pull db '[*] (sget target :db/id))})))))
 
 (spec/def :db/id int?)
 (spec/def ::entity (spec/keys :req [:db/id]))
@@ -345,11 +369,11 @@
     (into {:text    (sget ht :hypertext/content)
            :target  id
            :locked? false}
-          (map (fn [{pid :db/id
-                     pname :pointer/name
+          (map (fn [{pid                :db/id
+                     pname              :pointer/name
                      {target-id :db/id} :pointer/target
-                     :keys [pointer/locked?]
-                     :as p}]
+                     :keys              [pointer/locked?]
+                     :as                p}]
                  {:pre [(spec/valid? ::pointer p)]}
                  [pname
                   (if locked?
@@ -407,14 +431,15 @@
          :as           version}
         (d/entity db id)
         db-at-version (d/as-of db txid)]
-    {:number     version-no
-     :target     id
-     :wsdata     (get-wsdata db-at-version wsid)
-     "act"       (get-version-act db id)
-     "children"  (into {}
-                       (string-indexed-map
-                         #(get-child-data db version %)
-                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
+    {:number    version-no
+     :target    id
+     ;; MAYBE TODO: :wsdata → "ws"? (RM 2019-01-28)
+     :wsdata    (get-wsdata db-at-version wsid)
+     "act"      (get-version-act db id)
+     "children" (into {}
+                      (string-indexed-map
+                        #(get-child-data db version %)
+                        (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
 (declare render-reflect-data)
 (declare render-wsdata)
@@ -446,12 +471,12 @@
                        db)
         version-count (count (get-ws-txids reachable-db wsid))]
     (assert wsid)
-    (into {:type       :reflect
-           :target     id
-           "parent"    (if parent-reflect-id
-                         (get-reflect-data db parent-reflect-id)
-                         :locked)
-           :max-v      (dec version-count)}
+    (into {:type    :reflect
+           :target  id
+           "parent" (if parent-reflect-id
+                      (get-reflect-data db parent-reflect-id)
+                      :locked)
+           :max-v   (dec version-count)}
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
@@ -493,11 +518,11 @@
 (declare get-cp-hypertext-txtree)
 
 (defn get-cp-reflect-txtree [db id]
-  (let [{{wsid :db/id} :reflect/ws
+  (let [{{wsid :db/id}           :reflect/ws
          {reachable-txid :db/id} :reflect/reachable}
         (d/entity db id)]
     (assert wsid)
-    {:reflect/ws wsid
+    {:reflect/ws        wsid
      :reflect/reachable (or reachable-txid "datomic.tx")}))
 
 ;; Note: This locks all the pointer copies, because that's what I need when I
@@ -595,7 +620,7 @@
 ;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;; alright.
 (defn ask [db wsid wsdata question]
-  (let [qht-txreq (ht->txreq wsdata question)
+  (let [qht-txreq (ht->txreq db wsdata question)
 
         {:keys [db-after tempids]}
         (d/with db qht-txreq)
@@ -754,7 +779,7 @@
 ;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
 ;; 2019-01-08)
 (defn reply [db wsid wsdata answer]
-  (let [aht-txreq (ht->txreq wsdata answer)
+  (let [aht-txreq (ht->txreq db wsdata answer)
 
         {:keys [db-after tempids]} (d/with db aht-txreq)
         aht-tempid (d/resolve-tempid db-after tempids "htid")
@@ -853,7 +878,7 @@
     (loop [db db-at-start]
       (if (get (d/entity db wsid) :ws/waiting-for)
         [question :waiting]
-        (let [wsdata      (get-wsdata db wsid)
+        (let [wsdata (get-wsdata db wsid)
               locked-pmap (s/select-first (s/walker :locked?) wsdata)]
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
@@ -876,7 +901,7 @@
     (map #(get-root-qa conn %) finished-wsids)))
 
 (defn start-working [conn]
-  (let [db   (d/db conn)
+  (let [db (d/db conn)
         wsid (first (wss-to-show db))]
     (swap! last-shown-wsid (constantly wsid))
     (render-wsdata (get-wsdata db wsid))))
