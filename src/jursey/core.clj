@@ -1,6 +1,7 @@
 (ns jursey.core
   [:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
+            [clojure.spec.alpha :as spec]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [cognitect.rebl :as rebl]
@@ -235,8 +236,22 @@
       (run [:unlock "r.4.children.0.1"])
       (run [:unlock "r.4.children.0.parent"])
       (run [:unlock "r.4.children.0.parent.0"])
-
       (run [:ask "How do you like $r.4.children.0?"]))
+
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:reply "Austin"])
+      (run [:unlock "r"])
+      (run [:unlock "r.4"]))
+
+
+  (run [:ask "How do you like $r.4.children.0?"])
+
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
@@ -289,18 +304,59 @@
                       name->htdata))]
     (replace-substrings (sget htdata :text) pointer->text)))
 
+(declare get-htdata)
+(declare render-reflect-data)
+(declare get-reflect-data)
+
+;; TODO: Rename to get-unlocked-pointer-data or something like that. (RM
+;; 2019-01-28)
+(defn get-pointer-data [db id]
+  (let [{:keys [pointer/target]} (d/entity db id)]
+    (assert target)
+    (cond
+      (get target :hypertext/content)
+      (get-htdata db (sget target :db/id))
+
+      (get target :reflect/ws)
+      {:text    (str \newline
+                     (-> (get-reflect-data db (sget target :db/id))
+                         render-reflect-data
+                         hypertext-format)
+                     \newline)
+       :target  (sget target :db/id)
+       :locked? false}
+
+      :else
+      (throw (ex-info "Don't know how to handle this pointer target."
+                      {:target target
+                       :pull (d/pull db '[*] (sget target :db/id))})))))
+
+(spec/def :db/id int?)
+(spec/def ::entity (spec/keys :req [:db/id]))
+
+(spec/def :pointer/name string?)
+(spec/def :pointer/target ::entity)
+(spec/def :pointer/locked? boolean?)
+(spec/def ::pointer (spec/keys :req [:pointer/name :pointer/target
+                                     :pointer/locked?]))
+
 (defn get-htdata [db id]
   (let [ht (d/pull db '[*] id)]
     (into {:text    (sget ht :hypertext/content)
            :target  id
            :locked? false}
-          (map (fn [p]
-                 [(sget p :pointer/name)
-                  (if (sget p :pointer/locked?)
-                    {:id      (sget p :db/id)
+          (map (fn [{pid :db/id
+                     pname :pointer/name
+                     {target-id :db/id} :pointer/target
+                     :keys [pointer/locked?]
+                     :as p}]
+                 {:pre [(spec/valid? ::pointer p)]}
+                 [pname
+                  (if locked?
+                    {:id      pid
                      :locked? true
-                     :target  (get-in p [:pointer/target :db/id])}
-                    (get-htdata db (sget-in p [:pointer/target :db/id])))])
+                     :target  target-id}
+                    (get-pointer-data db pid))])
                (get ht :hypertext/pointer [])))))
 
 (defn get-qadata [db
@@ -436,6 +492,14 @@
 
 (declare get-cp-hypertext-txtree)
 
+(defn get-cp-reflect-txtree [db id]
+  (let [{{wsid :db/id} :reflect/ws
+         {reachable-txid :db/id} :reflect/reachable}
+        (d/entity db id)]
+    (assert wsid)
+    {:reflect/ws wsid
+     :reflect/reachable (or reachable-txid "datomic.tx")}))
+
 ;; Note: This locks all the pointer copies, because that's what I need when I
 ;; copy a hypertext to another workspace. Adapt if you need faithfully copied
 ;; locked status somewhere.
@@ -453,6 +517,9 @@
 
           (some? (get target :ws/question))
           target-id
+
+          (some? (get target :reflect/ws))
+          (get-cp-reflect-txtree db target-id)
 
           :else (throw (ex-info "Don't know how to handle this pointer target."
                                 {:target target})))]
