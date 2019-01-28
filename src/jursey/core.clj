@@ -719,7 +719,7 @@
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
-        parent-path (vec (butlast path))
+        parent-path (pop path)
         parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
@@ -736,7 +736,7 @@
                           (Integer/parseInt (last path)))
 
           (= (last parent-path) "children")
-          (unlock-child db (get-in wsdata (conj (vec (butlast parent-path))
+          (unlock-child db (get-in wsdata (conj (pop parent-path)
                                                 :target))
                         (get-in wsdata (conj path :wsid)))
 
