@@ -879,7 +879,8 @@
       (if (get (d/entity db wsid) :ws/waiting-for)
         [question :waiting]
         (let [wsdata (get-wsdata db wsid)
-              locked-pmap (s/select-first (s/walker :locked?) wsdata)]
+              locked-pmap (s/select-first ["sq" "0" "a" (s/walker :locked?)]
+                                          wsdata)]
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
