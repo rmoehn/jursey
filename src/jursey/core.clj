@@ -156,35 +156,38 @@
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
-;; Credits: http://clj-me.cgrand.net/2011/06/17/a-flatter-cond/
-(defmacro cond-let [& clauses]
-  (when-let [[t e & cs] (seq clauses)]
-    (if (vector? t)
-      `(if-let ~t ~e (cond-let ~@cs))
-      `(if ~t ~e (cond-let ~@cs)))))
+(defn target-type [_ wsdata path]
+  (let [parent-path (pop path)
+        parent-type (get-in wsdata (conj parent-path :type))]
+    (cond
+      (= path ["r"])                        :reflection-root
+      (= (last path) "parent")              :parent
+      (and (= parent-type :reflect)
+           (re-matches #"\d+" (last path))) :version
+      (= (last parent-path) "children")     :child
+      :else                                 :default)))
 
-(cond-let
-  [x (+ 4 5)]
-  x
-  :else
-  5)
+(defmulti get-target target-type)
 
-(defn get-target [db wsdata path]
-  (cond-let
-    [target (get-in wsdata (conj path :target))]
-    target
+(defmethod get-target :reflection-root [_ {wsid :id} _]
+  (let [tempid (format "ws%s.r" wsid)]
+    [tempid
+     [{:db/id             tempid
+       :reflect/ws        wsid
+       :reflect/reachable "datomic.tx"}]]))
 
-    :else
-    (throw (ex-info "Don't know how to deal with this."
-                    {:wsdata wsdata :path path}))))
+(defmethod get-target :default [_ wsdata path]
+  [(sget-in wsdata (conj path :target)) nil])
 
 (defn process-pointer [db wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
-        path (->path pointer)]
+        path (->path pointer)
+        [target txreq] (get-target db wsdata path)]
     {:repr    dollar-pointer
+     :txreq txreq
      :pointer {:pointer/name    pointer
                :pointer/locked? (sget-in wsdata (conj path :locked?))
-               :pointer/target  (get-target db wsdata path)}}))
+               :pointer/target  target}}))
 ;; I need to separate the :pointer/target. If there is no target, I need to
 ;; find out what the path means and create a target transaction map.
 
@@ -276,6 +279,17 @@
 
   (run [:ask "How do you like $r.4.children.0?"])
 
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "Can you see anything in $r?"]))
+
+  (run [:unlock "sq.0.a"])
+  (run [:unlock "q.0"])
+  (run [:unlock "q.0.0"])
+
+  (stacktrace/e)
+
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
@@ -295,8 +309,7 @@
   (pprint/simple-dispatch x))
 
 (defn hypertext-format [x]
-  (pprint/with-pprint-dispatch
-    hypertext-dispatch
+  (pprint/with-pprint-dispatch hypertext-dispatch
     (pprint/write x :stream nil)))
 
 ;; TODO: Think about whether this can produce wrong substitutions.
@@ -476,7 +489,8 @@
            "parent" (if parent-reflect-id
                       (get-reflect-data db parent-reflect-id)
                       :locked)
-           :max-v   (dec version-count)}
+           :max-v   (dec version-count)
+           :locked? false}
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
@@ -498,18 +512,19 @@
   (let [{{qid :db/id} :ws/question
          sub-qas      :ws/sub-qa}
         (d/pull db '[*] id)]
-    {"q"  (some->> qid (get-htdata db))
+    {:id  id
+     "q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
      "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
             (get-reflect-data db reflect-id)
-            :locked)}))
+            {:locked? true})}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
-   "r"  (if (= reflect-data :locked)
+   "r"  (if (sget reflect-data :locked?)
           :locked
-          (render-reflect-data (sget wsdata "r")))})
+          (render-reflect-data reflect-data))})
 
 
 ;;;; Copying hypertext
@@ -623,7 +638,7 @@
   (let [qht-txreq (ht->txreq db wsdata question)
 
         {:keys [db-after tempids]}
-        (d/with db qht-txreq)
+        (d/with db (-pprint- qht-txreq))
 
         ;; Note: Both when a question is asked and when an answer is given,
         ;; two copies of it will be created: One to be stored in the current
@@ -745,27 +760,26 @@
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (pop path)
-        parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
-        ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
-        (cond
-          (and (= 1 (count path)) (= "r" (first path)))
+        ;; MAYBE TODO: Maybe turn this into a multimethod. (RM 2019-01-29)
+        (case (target-type db wsdata path)
+          :reflection-root
           (unlock-reflect wsid)
 
-          (= (last path) "parent")
+          :parent
           (unlock-parent db (get-in wsdata (conj parent-path :target)))
 
-          (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
+          :version
           (unlock-version db (get-in wsdata (conj parent-path :target))
                           (Integer/parseInt (last path)))
 
-          (= (last parent-path) "children")
+          :child
           (unlock-child db (get-in wsdata (conj (pop parent-path)
                                                 :target))
                         (get-in wsdata (conj path :wsid)))
 
-          :else
+          :default
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
