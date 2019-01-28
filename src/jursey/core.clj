@@ -218,9 +218,47 @@
     (-> (process-httree wsdata [] httree)
         (sget :txreq))))
 
+(comment
+
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:ask "Why do you feed your dog whipped cream?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:reply "Austin"])
+      (run [:unlock "r"])
+      (run [:unlock "r.4"])
+      (run [:unlock "r.4.children.0"])
+      (run [:unlock "r.4.children.0.0"])
+      (run [:unlock "r.4.children.0.1"])
+      (run [:unlock "r.4.children.0.parent"])
+      (run [:unlock "r.4.children.0.parent.0"])
+
+      (run [:ask "How do you like $r.4.children.0?"]))
+
+  (get-wsdata (d/db conn) @last-shown-wsid)
+
+  (d/pull (d/db conn) '[*] 17592186045469)
+
+  )
+
 
 ;;;; Rendering a workspace as a string
 (def --Hypertext-rendering)
+
+;; Credits: source of clojure.pprint
+(defmulti hypertext-dispatch class)
+(defmethod hypertext-dispatch String [s]
+  ((pprint/formatter-out "“~A”") s))
+(defmethod hypertext-dispatch :default [x]
+  (pprint/simple-dispatch x))
+
+(defn hypertext-format [x]
+  (pprint/with-pprint-dispatch
+    hypertext-dispatch
+    (pprint/write x :stream nil)))
 
 ;; TODO: Think about whether this can produce wrong substitutions.
 ;; (RM 2018-12-27)
