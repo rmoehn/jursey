@@ -156,37 +156,77 @@
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
-;; Credits: http://clj-me.cgrand.net/2011/06/17/a-flatter-cond/
-(defmacro cond-let [& clauses]
-  (when-let [[t e & cs] (seq clauses)]
-    (if (vector? t)
-      `(if-let ~t ~e (cond-let ~@cs))
-      `(if ~t ~e (cond-let ~@cs)))))
+;; TODO: Use the ::*-path specs for identification. (RM 2019-01-30)
+;; Note: An unlocked reflection structure already has a :target entry. However,
+;; reflection pointers should always get a new reflection structure as their
+;; target. Because reflection pointers only indicate a specific part of the
+;; structure. (Not sure about this. Just using the :target entry should also
+;; be fine.)
+(defn target-type [_ wsdata path]
+  (let [parent-path (pop path)
+        parent-type (get-in wsdata (conj parent-path :type))]
+    (cond
+      (= path ["r"])                        :reflection-root
+      (= (last path) "parent")              :parent
+      (and (= parent-type :reflect)
+           (re-matches #"\d+" (last path))) :version
+      (= (last parent-path) "children")     :child
+      :else                                 :hypertext)))
 
-(cond-let
-  [x (+ 4 5)]
-  x
-  :else
-  5)
+(defmulti get-target target-type)
 
-(defn get-target [db wsdata path]
-  (cond-let
-    [target (get-in wsdata (conj path :target))]
-    target
+;; TODO: Do all the methods return a vector with one transaction map? If yes,
+;; remove the vector and adapt the caller. (RM 2019-01-30)
+(defmethod get-target :reflection-root [db {wsid :id} _]
+  (let [rid (d/tempid :db.part/user)]
+    [rid
+     [{:db/id             rid
+       :reflect/ws        wsid
+       :reflect/reachable (-> (d/basis-t db) d/t->tx)}]]))
+;; basis-t is the last transaction, so the transaction where the target is
+;; created won't be reachable anymore.
 
-    :else
-    (throw (ex-info "Don't know how to deal with this."
-                    {:wsdata wsdata :path path}))))
+(spec/def ::strnum #(re-matches #"\d+" %))
+(spec/def ::child-path (spec/cat :version-path (spec/+ string?)
+                                 :_ #{"children"}
+                                 :child ::strnum))
+
+;; TODO: This overlaps a lot with unlock-child. Clean it up analogously to
+;; make-{parent,version}-txpart. (RM 2019-01-30)
+(defmethod get-target :child [db wsdata path]
+  (let [{:keys [version-path]} (spec/conform ::child-path path)
+        version (d/entity db (sget-in wsdata (conj version-path :target)))
+        rid (d/tempid :db.part/user)]
+    [rid
+     [{:db/id rid
+       :reflect/ws (sget-in wsdata (conj path :wsid))
+       :reflect/reachable (sget-in version [:version/tx :db/id])}]]))
+
+(spec/def ::parent-path (spec/cat :reflect-path (spec/* string?)
+                                  :_ #{"parent"}))
+
+(declare make-parent-txpart)
+
+(defmethod get-target :parent [db wsdata path]
+  (make-parent-txpart db wsdata path {:attach? false}))
+
+(declare make-version-txpart)
+
+(defmethod get-target :version [db wsdata path]
+  (make-version-txpart db wsdata path {:attach? false}))
+
+(defmethod get-target :hypertext [_ wsdata path]
+  [(sget-in wsdata (conj path :target)) nil])
 
 (defn process-pointer [db wsdata dollar-pointer]
   (let [pointer (apply str (rest dollar-pointer))
-        path (->path pointer)]
+        path (->path pointer)
+        [target txreq] (get-target db wsdata path)]
     {:repr    dollar-pointer
+     :txreq txreq
      :pointer {:pointer/name    pointer
-               :pointer/locked? (sget-in wsdata (conj path :locked?))
-               :pointer/target  (get-target db wsdata path)}}))
-;; I need to separate the :pointer/target. If there is no target, I need to
-;; find out what the path means and create a target transaction map.
+               :pointer/locked? (get-in wsdata (conj path :locked?) true)
+               :pointer/target  target}}))
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
 ;; structures". That's why I call such a data structure (list of lists or maps)
@@ -243,46 +283,6 @@
     (-> (process-httree db wsdata [] httree)
         (sget :txreq))))
 
-(comment
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin"])
-      (run [:unlock "r"])
-      (run [:unlock "r.4"])
-      (run [:unlock "r.4.children.0"])
-      (run [:unlock "r.4.children.0.0"])
-      (run [:unlock "r.4.children.0.1"])
-      (run [:unlock "r.4.children.0.parent"])
-      (run [:unlock "r.4.children.0.parent.0"])
-      (run [:ask "How do you like $r.4.children.0?"]))
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin"])
-      (run [:unlock "r"])
-      (run [:unlock "r.4"]))
-
-
-  (run [:ask "How do you like $r.4.children.0?"])
-
-
-  (get-wsdata (d/db conn) @last-shown-wsid)
-
-  (d/pull (d/db conn) '[*] 17592186045469)
-
-  )
-
 
 ;;;; Rendering a workspace as a string
 (def --Hypertext-rendering)
@@ -295,8 +295,7 @@
   (pprint/simple-dispatch x))
 
 (defn hypertext-format [x]
-  (pprint/with-pprint-dispatch
-    hypertext-dispatch
+  (pprint/with-pprint-dispatch hypertext-dispatch
     (pprint/write x :stream nil)))
 
 ;; TODO: Think about whether this can produce wrong substitutions.
@@ -315,21 +314,29 @@
                           [(str i) (f v)])
                         xs)))
 
+(declare render-reflect-data)
+
 (defn render-htdata [htdata]
-  (let [name->htdata
-        (apply dissoc htdata (filter keyword? (keys htdata)))
-        pointer->text
-        (into {} (map (fn [[name embedded-htdata]]
-                        [(str \$ name)
-                         (if (sget embedded-htdata :locked?)
-                           (str \$ name)
-                           (format "[%s: %s]" name
-                                   (render-htdata embedded-htdata)))])
-                      name->htdata))]
-    (replace-substrings (sget htdata :text) pointer->text)))
+  (case (sget htdata :type)
+    :hypertext
+    (let [name->htdata
+          (apply dissoc htdata (filter keyword? (keys htdata)))
+          pointer->text
+          (into {} (map (fn [[name embedded-htdata]]
+                          [(str \$ name)
+                           (if (sget embedded-htdata :locked?)
+                             (str \$ name)
+                             (format "[%s: %s]" name
+                                     (render-htdata embedded-htdata)))])
+                        name->htdata))]
+      (replace-substrings (sget htdata :text) pointer->text))
+
+    :reflect
+    (str \newline
+         (hypertext-format (render-reflect-data htdata))
+         \newline)))
 
 (declare get-htdata)
-(declare render-reflect-data)
 (declare get-reflect-data)
 
 ;; TODO: Rename to get-unlocked-pointer-data or something like that. (RM
@@ -342,18 +349,12 @@
       (get-htdata db (sget target :db/id))
 
       (get target :reflect/ws)
-      {:text    (str \newline
-                     (-> (get-reflect-data db (sget target :db/id))
-                         render-reflect-data
-                         hypertext-format)
-                     \newline)
-       :target  (sget target :db/id)
-       :locked? false}
+      (get-reflect-data db (sget target :db/id))
 
-      :else
-      (throw (ex-info "Don't know how to handle this pointer target."
-                      {:target target
-                       :pull   (d/pull db '[*] (sget target :db/id))})))))
+    :else
+    (throw (ex-info "Don't know how to handle this pointer target."
+                    {:target target
+                     :pull   (d/pull db '[*] (sget target :db/id))})))))
 
 (spec/def :db/id int?)
 (spec/def ::entity (spec/keys :req [:db/id]))
@@ -366,7 +367,8 @@
 
 (defn get-htdata [db id]
   (let [ht (d/pull db '[*] id)]
-    (into {:text    (sget ht :hypertext/content)
+    (into {:type    :hypertext
+           :text    (sget ht :hypertext/content)
            :target  id
            :locked? false}
           (map (fn [{pid                :db/id
@@ -403,7 +405,6 @@
          (render-htdata (sget qadata "a")))})
 
 (declare get-wsdata)
-(declare get-reflect-data)
 
 ;; TODO: Make it consistent where (caller/called) and how arguments are
 ;; passed, destructured and verified. See also branch abandoned/ids-to-entities
@@ -424,7 +425,6 @@
              {:locked? false})
       (assoc base :locked? true))))
 
-;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no    :version/number
          {txid :db/id} :version/tx
@@ -433,18 +433,16 @@
         db-at-version (d/as-of db txid)]
     {:number    version-no
      :target    id
-     ;; MAYBE TODO: :wsdata → "ws"? (RM 2019-01-28)
-     :wsdata    (get-wsdata db-at-version wsid)
+     "ws"       (get-wsdata db-at-version wsid)
      "act"      (get-version-act db id)
      "children" (into {}
                       (string-indexed-map
                         #(get-child-data db version %)
                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
-(declare render-reflect-data)
 (declare render-wsdata)
 
-(defn render-version-data [{:keys [wsdata] children "children" act "act"}]
+(defn render-version-data [{wsdata "ws" children "children" act "act"}]
   {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
                                    (if (get c :locked?)
@@ -458,7 +456,7 @@
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
 ;; contain the necessary reflection structures.
-;; TODO: Don't show and forbid to unlock the parent if it is a root
+;; TODO: Don't show and do forbid to unlock the parent if it is a root
 ;; question's pseudo-workspace. (RM 2019-01-22)
 ;; TODO: Make sure that the :version/tx and :reflect/reachable are
 ;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
@@ -475,8 +473,9 @@
            :target  id
            "parent" (if parent-reflect-id
                       (get-reflect-data db parent-reflect-id)
-                      :locked)
-           :max-v   (dec version-count)}
+                      {:locked? true})
+           :max-v   (dec version-count)
+           :locked? false}
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
@@ -489,7 +488,7 @@
                                (filter (fn [[k _]] (re-matches #"\d+" (str k))))
                                (plumbing/map-vals render-version-data))]
     (into {:max-v   max-v
-           "parent" (if (= parent :locked)
+           "parent" (if (sget parent :locked?)
                       :locked
                       (render-reflect-data parent))}
           rendered-versions)))
@@ -498,18 +497,20 @@
   (let [{{qid :db/id} :ws/question
          sub-qas      :ws/sub-qa}
         (d/pull db '[*] id)]
-    {"q"  (some->> qid (get-htdata db))
+    {:id  id
+     "q"  (some->> qid (get-htdata db))
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
      "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
             (get-reflect-data db reflect-id)
-            :locked)}))
+            {:locked? true})
+     :locked? false}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
-   "r"  (if (= reflect-data :locked)
+   "r"  (if (sget reflect-data :locked?)
           :locked
-          (render-reflect-data (sget wsdata "r")))})
+          (render-reflect-data reflect-data))})
 
 
 ;;;; Copying hypertext
@@ -517,13 +518,28 @@
 
 (declare get-cp-hypertext-txtree)
 
+(defn get-cp-version-txtree [version]
+  {:version/number (sget version :version/number)
+   :version/tx (sget-in version [:version/tx :db/id])})
+
+;; Note: I don't need to copy anything else. Reflection pointers can only
+;; point to a reflect or a reflect together with exactly one version. So I
+;; don't need to make a recursive call. What about the workspaces and
+;; actions that reflects point at? I don't need to copy them, either. I only
+;; need to copy something if parts of it might be unlocked in another place. A
+;; workspace or action cannot be passed around on its own. It has to be part
+;; of a reflection structure. And in there it is immutable. Of course we can
+;; pass around a hypertext from within that workspace, but copying of
+;; hypertexts is already supported.
 (defn get-cp-reflect-txtree [db id]
   (let [{{wsid :db/id}           :reflect/ws
-         {reachable-txid :db/id} :reflect/reachable}
+         {reachable-txid :db/id} :reflect/reachable
+         versions                :reflect/version}
         (d/entity db id)]
     (assert wsid)
     {:reflect/ws        wsid
-     :reflect/reachable (or reachable-txid "datomic.tx")}))
+     :reflect/reachable reachable-txid
+     :reflect/version   (map get-cp-version-txtree versions)}))
 
 ;; Note: This locks all the pointer copies, because that's what I need when I
 ;; copy a hypertext to another workspace. Adapt if you need faithfully copied
@@ -598,6 +614,9 @@
 ;; - Only show a workspace to the user if it is waited for.
 ;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
 ;;   workspaces have a :ws/question.
+;; - For anything that can be part of a pointer, its name in wsdata has to be
+;;   the same as in the rendered wsdata.
+;; - All render- functions must return a string.
 
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
@@ -617,8 +636,11 @@
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
-;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
-;; alright.
+;; Notes:
+;; - The answer pointer in a QA has no :pointer/name. Not sure if this is
+;;   alright.
+;; - For now, passing "ws" or "act" is not supported. You have to pass the
+;;   whole version.
 (defn ask [db wsid wsdata question]
   (let [qht-txreq (ht->txreq db wsdata question)
 
@@ -705,14 +727,37 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
+(spec/def ::version-path (spec/cat :reflect-path (spec/+ string?)
+                                   :version ::strnum))
+
 ;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
-(defn- unlock-version [db reflect-id version]
-  (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
-    (concat [{:db/id           reflect-id
-              :reflect/version "vid"}
-             {:db/id          "vid"
-              :version/number version
-              :version/tx     (-> (get-ws-txids db wsid) (nth version))}])))
+(defn- make-version-txpart [db wsdata path & [{:keys [attach?]
+                                               :or {attach? true}}]]
+  (let [{:keys [reflect-path version]} (spec/conform ::version-path path)
+        reflect-id (sget-in wsdata (conj reflect-path :target))
+
+        {{wsid :db/id} :reflect/ws
+         {reachable :db/id} :reflect/reachable}
+        (d/entity db reflect-id)
+
+        rid (if attach?
+              reflect-id
+              (d/tempid :db.part/user))
+        vid (d/tempid :db.part/user)
+        int-version (Integer/parseInt version)]
+    [rid
+     [(-> {:db/id           rid
+           :reflect/ws      wsid
+           :reflect/version vid}
+          (plumbing/assoc-when
+            :reflect/reachable
+            (cond
+              (and (not attach?) (some? reachable)) reachable
+              (and (not attach?) (nil? reachable)) (-> (d/basis-t db) d/t->tx)
+              :else nil)))
+      {:db/id          vid
+       :version/number int-version
+       :version/tx     (-> (get-ws-txids db wsid) (nth int-version))}]]))
 
 (defn- unlock-child [db version-id child-wsid]
   [{:db/id         version-id
@@ -722,8 +767,11 @@
     :reflect/reachable (sget-in (d/entity db version-id)
                                 [:version/tx :db/id])}])
 
-(defn- unlock-parent [db reflect-id]
-  (let [[child-wsid parent-wsid]
+(defn- make-parent-txpart [db wsdata path & [{:keys [attach?]
+                                           :or {attach? true}}]]
+  (let [{:keys [reflect-path]} (spec/conform ::parent-path path)
+        reflect-id (sget-in wsdata (conj reflect-path :target))
+        [child-wsid parent-wsid]
         (d/q '[:find [?w ?p]
                :in $ ?r
                :where
@@ -734,38 +782,39 @@
         child-created-txid (first (get-ws-txids db child-wsid))
         reachable-txid (->> (get-ws-txids db parent-wsid)
                             (filter #(< % child-created-txid))
-                            last)]
-    [{:db/id          reflect-id
-      :reflect/parent "rid"}
-     {:db/id             "rid"
-      :reflect/ws        parent-wsid
-      :reflect/reachable reachable-txid}]))
+                            last)
+        rid (d/tempid :db.part/user)]
+    [rid
+     (cond-> [{:db/id             rid
+               :reflect/ws        parent-wsid
+               :reflect/reachable reachable-txid}]
+             attach? (conj {:db/id          reflect-id
+                            :reflect/parent rid}))]))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (pop path)
-        parent-type (get-in wsdata (conj parent-path :type))
 
         txreq
-        ;; TODO: This is ugly. Fix it. (RM 2019-01-22)
-        (cond
-          (and (= 1 (count path)) (= "r" (first path)))
+        ;; MAYBE TODO: Maybe turn this into a multimethod. Cf. get-target. (RM
+        ;; 2019-01-29)
+        (case (target-type db wsdata path)
+          :reflection-root
           (unlock-reflect wsid)
 
-          (= (last path) "parent")
-          (unlock-parent db (get-in wsdata (conj parent-path :target)))
+          :parent
+          (-> (make-parent-txpart db wsdata path) second)
 
-          (and (= parent-type :reflect) (re-matches #"\d+" (last path)))
-          (unlock-version db (get-in wsdata (conj parent-path :target))
-                          (Integer/parseInt (last path)))
+          :version
+          (-> (make-version-txpart db wsdata path) second)
 
-          (= (last parent-path) "children")
+          :child
           (unlock-child db (get-in wsdata (conj (pop parent-path)
                                                 :target))
                         (get-in wsdata (conj path :wsid)))
 
-          :else
+          :hypertext
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
