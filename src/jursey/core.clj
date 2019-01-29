@@ -169,12 +169,12 @@
 
 (defmulti get-target target-type)
 
-(defmethod get-target :reflection-root [_ {wsid :id} _]
-  (let [tempid (format "ws%s.r" wsid)]
+(defmethod get-target :reflection-root [db {wsid :id} _]
+  (let [tempid (d/tempid :db.part/user)]
     [tempid
      [{:db/id             tempid
        :reflect/ws        wsid
-       :reflect/reachable "datomic.tx"}]]))
+       :reflect/reachable (-> (d/basis-t db) d/t->tx)}]]))
 
 (defmethod get-target :default [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
@@ -288,12 +288,25 @@
   (run [:unlock "q.0"])
   (run [:unlock "q.0.0"])
 
-  (stacktrace/e)
+  (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
+  (run [:unlock "sq.0.a"])
+  (run [:unlock "sq.0.a.0"])
 
+  ;; Then :ask with one of those things in the reflection structure.
+
+  (stacktrace/e)
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
-  (d/pull (d/db conn) '[*] 17592186045469)
+  (d/pull (d/db conn) '[*] 17592186045440)
+
+  (d/q '[:find ?e ?a ?v ?op
+         :in $ ?log
+         :where
+         [(tx-data ?log 13194139534333) [[?e ?a ?v _ ?op]]]]
+       (d/db conn) (d/log conn))
+
+  (get-ws-txids (d/as-of (d/db conn) 13194139534333) @last-shown-wsid)
 
   )
 
@@ -328,21 +341,29 @@
                           [(str i) (f v)])
                         xs)))
 
+(declare render-reflect-data)
+
 (defn render-htdata [htdata]
-  (let [name->htdata
-        (apply dissoc htdata (filter keyword? (keys htdata)))
-        pointer->text
-        (into {} (map (fn [[name embedded-htdata]]
-                        [(str \$ name)
-                         (if (sget embedded-htdata :locked?)
-                           (str \$ name)
-                           (format "[%s: %s]" name
-                                   (render-htdata embedded-htdata)))])
-                      name->htdata))]
-    (replace-substrings (sget htdata :text) pointer->text)))
+  (case (sget htdata :type)
+    :hypertext
+    (let [name->htdata
+          (apply dissoc htdata (filter keyword? (keys htdata)))
+          pointer->text
+          (into {} (map (fn [[name embedded-htdata]]
+                          [(str \$ name)
+                           (if (sget embedded-htdata :locked?)
+                             (str \$ name)
+                             (format "[%s: %s]" name
+                                     (render-htdata embedded-htdata)))])
+                        name->htdata))]
+      (replace-substrings (sget htdata :text) pointer->text))
+
+    :reflect
+    (str \newline
+         (hypertext-format (render-reflect-data htdata))
+         \newline)))
 
 (declare get-htdata)
-(declare render-reflect-data)
 (declare get-reflect-data)
 
 ;; TODO: Rename to get-unlocked-pointer-data or something like that. (RM
@@ -355,18 +376,12 @@
       (get-htdata db (sget target :db/id))
 
       (get target :reflect/ws)
-      {:text    (str \newline
-                     (-> (get-reflect-data db (sget target :db/id))
-                         render-reflect-data
-                         hypertext-format)
-                     \newline)
-       :target  (sget target :db/id)
-       :locked? false}
+      (get-reflect-data db (sget target :db/id))
 
-      :else
-      (throw (ex-info "Don't know how to handle this pointer target."
-                      {:target target
-                       :pull   (d/pull db '[*] (sget target :db/id))})))))
+    :else
+    (throw (ex-info "Don't know how to handle this pointer target."
+                    {:target target
+                     :pull   (d/pull db '[*] (sget target :db/id))})))))
 
 (spec/def :db/id int?)
 (spec/def ::entity (spec/keys :req [:db/id]))
@@ -379,7 +394,8 @@
 
 (defn get-htdata [db id]
   (let [ht (d/pull db '[*] id)]
-    (into {:text    (sget ht :hypertext/content)
+    (into {:type    :hypertext
+           :text    (sget ht :hypertext/content)
            :target  id
            :locked? false}
           (map (fn [{pid                :db/id
@@ -416,7 +432,6 @@
          (render-htdata (sget qadata "a")))})
 
 (declare get-wsdata)
-(declare get-reflect-data)
 
 ;; TODO: Make it consistent where (caller/called) and how arguments are
 ;; passed, destructured and verified. See also branch abandoned/ids-to-entities
@@ -437,7 +452,6 @@
              {:locked? false})
       (assoc base :locked? true))))
 
-;; (RM 2019-01-22).
 (defn get-version-data [db wsid id]
   (let [{version-no    :version/number
          {txid :db/id} :version/tx
@@ -446,18 +460,16 @@
         db-at-version (d/as-of db txid)]
     {:number    version-no
      :target    id
-     ;; MAYBE TODO: :wsdata → "ws"? (RM 2019-01-28)
-     :wsdata    (get-wsdata db-at-version wsid)
+     "ws"       (get-wsdata db-at-version wsid)
      "act"      (get-version-act db id)
      "children" (into {}
                       (string-indexed-map
                         #(get-child-data db version %)
                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
-(declare render-reflect-data)
 (declare render-wsdata)
 
-(defn render-version-data [{:keys [wsdata] children "children" act "act"}]
+(defn render-version-data [{wsdata "ws" children "children" act "act"}]
   {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
                                    (if (get c :locked?)
@@ -471,7 +483,7 @@
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
 ;; contain the necessary reflection structures.
-;; TODO: Don't show and forbid to unlock the parent if it is a root
+;; TODO: Don't show and do forbid to unlock the parent if it is a root
 ;; question's pseudo-workspace. (RM 2019-01-22)
 ;; TODO: Make sure that the :version/tx and :reflect/reachable are
 ;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
@@ -488,9 +500,11 @@
            :target  id
            "parent" (if parent-reflect-id
                       (get-reflect-data db parent-reflect-id)
-                      :locked)
+                      {:locked? true})
            :max-v   (dec version-count)
-           :locked? false}
+           :locked? false
+           "ws"     (get-wsdata reachable-db wsid)}
+           ;; Have to include this for :ask and :reply, not :unlock.
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
@@ -499,11 +513,12 @@
 ;; TODO: Maybe I can remove the "data" from the get- and render- functions.
 ;; What they return and accept is obvious from their argument. (RM 2019-01-24)
 (defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
+  (pprint/pprint reflect-data)
   (let [rendered-versions (->> reflect-data
                                (filter (fn [[k _]] (re-matches #"\d+" (str k))))
                                (plumbing/map-vals render-version-data))]
     (into {:max-v   max-v
-           "parent" (if (= parent :locked)
+           "parent" (if (sget parent :locked?)
                       :locked
                       (render-reflect-data parent))}
           rendered-versions)))
@@ -517,9 +532,11 @@
      "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
      "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
             (get-reflect-data db reflect-id)
-            {:locked? true})}))
+            {:locked? true})
+     :locked? false}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
+  (pprint/pprint wsdata)
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
    "r"  (if (sget reflect-data :locked?)
@@ -613,6 +630,9 @@
 ;; - Only show a workspace to the user if it is waited for.
 ;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
 ;;   workspaces have a :ws/question.
+;; - For anything that can be part of a pointer, its name in wsdata has to be
+;;   the same as in the rendered wsdata.
+;; - All render- functions must return a string.
 
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
@@ -638,7 +658,7 @@
   (let [qht-txreq (ht->txreq db wsdata question)
 
         {:keys [db-after tempids]}
-        (d/with db (-pprint- qht-txreq))
+        (d/with db qht-txreq)
 
         ;; Note: Both when a question is asked and when an answer is given,
         ;; two copies of it will be created: One to be stored in the current
