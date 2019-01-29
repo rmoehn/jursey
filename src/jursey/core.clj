@@ -178,11 +178,19 @@
 ;; basis-t is the last transaction, so the transaction where the target is
 ;; created won't be reachable anymore.
 
-(defmethod get-target :child [_ wsdata path]
-  (let [tempid (d/tempid :db.part/user)]
+(spec/def ::strnum #(re-matches #"\d+" %))
+(spec/def ::child-path (spec/cat :version-path (spec/* string?)
+                                 :_ #{"children"}
+                                 :child ::strnum))
+
+(defmethod get-target :child [db wsdata path]
+  (let [{:keys [version-path]} (spec/conform ::child-path path)
+        version (d/entity db (sget-in wsdata (conj version-path :target)))
+        tempid (d/tempid :db.part/user)]
     [tempid
      [{:db/id tempid
-       :reflect/ws (sget-in wsdata (conj path :wsid))}]]))
+       :reflect/ws (sget-in wsdata (conj path :wsid))
+       :reflect/reachable (sget-in version [:version/tx :db/id])}]]))
 
 (defmethod get-target :default [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
@@ -258,23 +266,6 @@
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
-  ;;;; Scenario: Reflection – pass locked top-level "r"
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "Can you see anything in $r?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:unlock "q.0.0"])
-      (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin!"])
-      (run [:reply "$sq.0.a"])
-      (run [:unlock "sq.0.a.0"])
-      (run [:reply "$sq.0.a.0"])
-      (get-root-qas conn test-agent))
 
   (stacktrace/e)
 

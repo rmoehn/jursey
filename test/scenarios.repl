@@ -26,6 +26,27 @@
        "sq" {},
        "r" :locked}})
 
+;;;; Scenario: Reflection – pass locked top-level "r"
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "Can you see anything in $r?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.0"])
+    (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Austin!"])
+    (run [:reply "$sq.0.a"])
+    (run [:unlock "sq.0.a.0"])
+    (run [:reply "$sq.0.a.0"])
+    (get-root-qas conn test-agent))
+
+(check!
+    #{'(["What is the capital of [1: Texas]?" "[0: Austin!]"])})
+
 ;;;; Scenario: Reflection – pass already unlocked things
 
 (do (set-up {:reset? true})
