@@ -1,6 +1,47 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflection pass already unlocked things
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "Why do you feed your dog whipped cream?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Austin"])
+    (run [:unlock "r"])
+    (run [:unlock "r.4"])
+    (run [:unlock "r.4.children.0"])
+    (run [:unlock "r.4.children.0.0"])
+    (run [:unlock "r.4.children.0.1"])
+    (run [:ask "How do you like $r.4.children.0?"])
+    (run [:unlock "sq.2.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.1"])
+    (run [:unlock "q.0.parent"])
+    (run [:unlock "q.0.parent.0"]))
+
+(check!
+    #{{"q"  "How do you like [0: \n{:max-v 1,
+ “parent”
+ {:max-v 0,
+  “parent” :locked,
+  “0”
+  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+   “children” {},
+   “act” [:act.command/ask “What is the capital city of $q.0?”]}},
+ “1”
+ {“ws”
+  {“q” “What is the capital city of [0: Texas]?”,
+   “sq” {},
+   “r” :locked},
+  “children” {},
+  “act” [:act.command/reply “Austin”]}}
+]?",
+       "sq" {},
+       "r"  :locked}})
 
 ;;;; Scenario: Reflection root workspace child – parent
 
@@ -172,3 +213,4 @@
 ;; - Asking or replying [with [nested] hypertext].
 ;; - Pointing to nested hypertext ($sq.0.0).
 ;; - Unlocking a grandparent.
+;; - Reachability. Draw a tree and deduce reachability test cases from it.

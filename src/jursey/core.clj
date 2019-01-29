@@ -248,22 +248,7 @@
 
 (comment
 
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin"])
-      (run [:unlock "r"])
-      (run [:unlock "r.4"])
-      (run [:unlock "r.4.children.0"])
-      (run [:unlock "r.4.children.0.0"])
-      (run [:unlock "r.4.children.0.1"])
-      (run [:unlock "r.4.children.0.parent"])
-      (run [:unlock "r.4.children.0.parent.0"])
-      (run [:ask "How do you like $r.4.children.0?"]))
+  ;;;; Scenario: Reflection pass locked child
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -276,23 +261,27 @@
       (run [:unlock "r"])
       (run [:unlock "r.4"]))
 
-
   (run [:ask "How do you like $r.4.children.0?"])
+  ;; Good point! I have to support all versions of reflection things with
+  ;; nonexistent target.
+
+  ;;;; Scenario: Reflection pass locked top-level "r"
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
       (start-working conn)
-      (run [:ask "Can you see anything in $r?"]))
-
-  (run [:unlock "sq.0.a"])
-  (run [:unlock "q.0"])
-  (run [:unlock "q.0.0"])
-
-  (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
-  (run [:unlock "sq.0.a"])
-  (run [:unlock "sq.0.a.0"])
-
-  ;; Then :ask with one of those things in the reflection structure.
+      (run [:ask "Can you see anything in $r?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:unlock "q.0.0"])
+      (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:reply "Austin!"])
+      (run [:reply "$sq.0.a"])
+      (run [:unlock "sq.0.a.0"])
+      (run [:reply "$sq.0.a.0"])
+      (get-root-qas conn test-agent))
 
   (stacktrace/e)
 
@@ -648,8 +637,11 @@
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
-;; Note: The answer pointer in a QA has no :pointer/name. Not sure if this is
-;; alright.
+;; Notes:
+;; - The answer pointer in a QA has no :pointer/name. Not sure if this is
+;;   alright.
+;; - For now, passing "ws" or "act" is not supported. You have to pass the
+;;   whole version.
 (defn ask [db wsid wsdata question]
   (let [qht-txreq (ht->txreq db wsdata question)
 
