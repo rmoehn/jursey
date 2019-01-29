@@ -502,9 +502,7 @@
                       (get-reflect-data db parent-reflect-id)
                       {:locked? true})
            :max-v   (dec version-count)
-           :locked? false
-           "ws"     (get-wsdata reachable-db wsid)}
-           ;; Have to include this for :ask and :reply, not :unlock.
+           :locked? false}
           (->> (get-reflect-versions db id)
                (map #(let [{:keys [number] :as version-data}
                            (get-version-data db wsid %)]
@@ -513,7 +511,6 @@
 ;; TODO: Maybe I can remove the "data" from the get- and render- functions.
 ;; What they return and accept is obvious from their argument. (RM 2019-01-24)
 (defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
-  (pprint/pprint reflect-data)
   (let [rendered-versions (->> reflect-data
                                (filter (fn [[k _]] (re-matches #"\d+" (str k))))
                                (plumbing/map-vals render-version-data))]
@@ -536,7 +533,6 @@
      :locked? false}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
-  (pprint/pprint wsdata)
   {"q"  (render-htdata (sget wsdata "q"))
    "sq" (plumbing/map-vals #(render-qadata %) (get wsdata "sq"))
    "r"  (if (sget reflect-data :locked?)
