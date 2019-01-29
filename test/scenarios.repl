@@ -1,7 +1,32 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
-;;;; Scenario: Reflection pass already unlocked things
+;;;; Scenario: Reflection – pass locked child
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "r"])
+    (run [:unlock "r.2"])
+    (run [:ask "How do you like $r.2.children.0?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.0"])
+    (run [:unlock "q.0.parent"]))
+
+(check!
+    #{{"q" "How do you like [0: \n{:max-v 0,
+ “parent” {:max-v 0, “parent” :locked},
+ “0”
+ {“ws” {“q” “What is the capital city of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” nil}}
+]?",
+       "sq" {},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass already unlocked things
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -43,7 +68,7 @@
        "sq" {},
        "r"  :locked}})
 
-;;;; Scenario: Reflection root workspace child – parent
+;;;; Scenario: Reflection – root workspace child – parent
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -96,7 +121,7 @@
                  "act" [:act.command/unlock "r.4"]}}}})
 
 
-;;;; Scenario: Reflection sub-question parent – child – parent
+;;;; Scenario: Reflection – sub-question parent – child – parent
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")

@@ -175,6 +175,14 @@
      [{:db/id             tempid
        :reflect/ws        wsid
        :reflect/reachable (-> (d/basis-t db) d/t->tx)}]]))
+;; basis-t is the last transaction, so the transaction where the target is
+;; created won't be reachable anymore.
+
+(defmethod get-target :child [_ wsdata path]
+  (let [tempid (d/tempid :db.part/user)]
+    [tempid
+     [{:db/id tempid
+       :reflect/ws (sget-in wsdata (conj path :wsid))}]]))
 
 (defmethod get-target :default [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
@@ -248,24 +256,9 @@
 
 (comment
 
-  ;;;; Scenario: Reflection pass locked child
+  (get-wsdata (d/db conn) @last-shown-wsid)
 
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:ask "Why do you feed your dog whipped cream?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:reply "Austin"])
-      (run [:unlock "r"])
-      (run [:unlock "r.4"]))
-
-  (run [:ask "How do you like $r.4.children.0?"])
-  ;; Good point! I have to support all versions of reflection things with
-  ;; nonexistent target.
-
-  ;;;; Scenario: Reflection pass locked top-level "r"
+  ;;;; Scenario: Reflection – pass locked top-level "r"
 
   (do (set-up {:reset? true})
       (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
