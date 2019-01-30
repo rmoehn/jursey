@@ -175,8 +175,6 @@
 
 (defmulti get-target target-type)
 
-;; TODO: Do all the methods return a vector with one transaction map? If yes,
-;; remove the vector and adapt the caller. (RM 2019-01-30)
 (defmethod get-target :reflection-root [db {wsid :id} _]
   (let [rid (d/tempid :db.part/user)]
     [rid
@@ -191,7 +189,7 @@
                                  :_ #{"children"}
                                  :child ::strnum))
 
-;; TODO: This overlaps a lot with unlock-child. Clean it up analogously to
+;; TODO: This overlaps with unlock-child. Clean it up analogous to
 ;; make-{parent,version}-txpart. (RM 2019-01-30)
 (defmethod get-target :child [db wsdata path]
   (let [{:keys [version-path]} (spec/conform ::child-path path)
@@ -202,9 +200,11 @@
        :reflect/ws (sget-in wsdata (conj path :wsid))
        :reflect/reachable (sget-in version [:version/tx :db/id])}]]))
 
-(spec/def ::parent-path (spec/cat :reflect-path (spec/* string?)
+(spec/def ::parent-path (spec/cat :reflect-path (spec/+ string?)
                                   :_ #{"parent"}))
 
+;; TODO: Reorganize the code, so that I don't have to put in all these
+;; `declare`s (RM 2019-01-30).
 (declare make-parent-txpart)
 
 (defmethod get-target :parent [db wsdata path]
@@ -339,8 +339,6 @@
 (declare get-htdata)
 (declare get-reflect-data)
 
-;; TODO: Rename to get-unlocked-pointer-data or something like that. (RM
-;; 2019-01-28)
 (defn get-pointer-data [db id]
   (let [{:keys [pointer/target]} (d/entity db id)]
     (assert target)
@@ -537,6 +535,7 @@
          versions                :reflect/version}
         (d/entity db id)]
     (assert wsid)
+    (assert (<= (count versions) 1))
     {:reflect/ws        wsid
      :reflect/reachable reachable-txid
      :reflect/version   (map get-cp-version-txtree versions)}))
@@ -614,8 +613,8 @@
 ;; - Only show a workspace to the user if it is waited for.
 ;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
 ;;   workspaces have a :ws/question.
-;; - For anything that can be part of a pointer, its name in wsdata has to be
-;;   the same as in the rendered wsdata.
+;; - For anything that can be part of a pointer string, its key in wsdata has to
+;;   be the same as in the rendered wsdata.
 ;; - All render- functions must return a string.
 
 ;; MAYBE TODO: Check before executing a command that the target
@@ -640,7 +639,7 @@
 ;; - The answer pointer in a QA has no :pointer/name. Not sure if this is
 ;;   alright.
 ;; - For now, passing "ws" or "act" is not supported. You have to pass the
-;;   whole version.
+;;   whole version. This can be amended in less than ten hours.
 (defn ask [db wsid wsdata question]
   (let [qht-txreq (ht->txreq db wsdata question)
 
@@ -727,6 +726,8 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
+;; TODO: Make this stricter, so that it not only parses, but also validates.
+;; (RM 2019-01-31)
 (spec/def ::version-path (spec/cat :reflect-path (spec/+ string?)
                                    :version ::strnum))
 
@@ -934,6 +935,7 @@
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
                              (unlock-by-pmap db wsid locked-pmap))
+                ;; Note that this doesn't create a :tx/act entry.
                 (recur (d/db conn)))))))))
 
 (defn get-root-qas [conn agent]
