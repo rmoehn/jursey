@@ -157,6 +157,11 @@
   (into (string/split pointer #"\.") relative-path))
 
 ;; TODO: Use the ::*-path specs for identification. (RM 2019-01-30)
+;; Note: An unlocked reflection structure already has a :target entry. However,
+;; reflection pointers should always get a new reflection structure as their
+;; target. Because reflection pointers only indicate a specific part of the
+;; structure. (Not sure about this. Just using the :target entry should also
+;; be fine.)
 (defn target-type [_ wsdata path]
   (let [parent-path (pop path)
         parent-type (get-in wsdata (conj parent-path :type))]
@@ -166,7 +171,7 @@
       (and (= parent-type :reflect)
            (re-matches #"\d+" (last path))) :version
       (= (last parent-path) "children")     :child
-      :else                                 :default)))
+      :else                                 :hypertext)))
 
 (defmulti get-target target-type)
 
@@ -182,12 +187,12 @@
 ;; created won't be reachable anymore.
 
 (spec/def ::strnum #(re-matches #"\d+" %))
-(spec/def ::child-path (spec/cat :version-path (spec/* string?)
+(spec/def ::child-path (spec/cat :version-path (spec/+ string?)
                                  :_ #{"children"}
                                  :child ::strnum))
 
-;; TODO: This overlaps a lot with unlock-child. Find a way to avoid
-;; duplication. Maybe analogous to make-parent-txpart. (RM 2019-01-30)
+;; TODO: This overlaps a lot with unlock-child. Clean it up analogously to
+;; make-{parent,version}-txpart. (RM 2019-01-30)
 (defmethod get-target :child [db wsdata path]
   (let [{:keys [version-path]} (spec/conform ::child-path path)
         version (d/entity db (sget-in wsdata (conj version-path :target)))
@@ -203,11 +208,14 @@
 (declare make-parent-txpart)
 
 (defmethod get-target :parent [db wsdata path]
-  (let [{:keys [reflect-path]} (spec/conform ::parent-path path)]
-    (make-parent-txpart db (sget-in wsdata (conj reflect-path :target))
-                        {:attach? false})))
+  (make-parent-txpart db wsdata path {:attach? false}))
 
-(defmethod get-target :default [_ wsdata path]
+(declare make-version-txpart)
+
+(defmethod get-target :version [db wsdata path]
+  (make-version-txpart db wsdata path {:attach? false}))
+
+(defmethod get-target :hypertext [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
 
 (defn process-pointer [db wsdata dollar-pointer]
@@ -736,14 +744,36 @@
    {:db/id      "rid"
     :reflect/ws wsid}])
 
+(spec/def ::version-path (spec/cat :reflect-path (spec/+ string?)
+                                   :version ::strnum))
+
 ;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
-(defn- unlock-version [db reflect-id version]
-  (let [wsid (sget-in (d/entity db reflect-id) [:reflect/ws :db/id])]
-    (concat [{:db/id           reflect-id
-              :reflect/version "vid"}
-             {:db/id          "vid"
-              :version/number version
-              :version/tx     (-> (get-ws-txids db wsid) (nth version))}])))
+(defn- make-version-txpart [db wsdata path & [{:keys [attach?]
+                                               :or {attach? true}}]]
+  (let [{:keys [reflect-path version]} (spec/conform ::version-path path)
+        reflect-id (sget-in wsdata (conj reflect-path :target))
+
+        {{wsid :db/id} :reflect/ws
+         {reachable :db/id} :reflect/reachable}
+        (d/entity db reflect-id)
+
+        rid (if attach?
+              reflect-id
+              (d/tempid :db.part/user))
+        vid (d/tempid :db.part/user)
+        int-version (Integer/parseInt version)]
+    [rid
+     [(-> {:db/id           rid
+           :reflect/version vid}
+          (plumbing/assoc-when
+            :reflect/reachable
+            (cond
+              (and (not attach?) (some? reachable)) reachable
+              (and (not attach?) (nil? reachable)) (-> (d/basis-t db) d/t->tx)
+              :else nil)))
+      {:db/id          vid
+       :version/number int-version
+       :version/tx     (-> (get-ws-txids db wsid) (nth int-version))}]]))
 
 (defn- unlock-child [db version-id child-wsid]
   [{:db/id         version-id
@@ -753,9 +783,11 @@
     :reflect/reachable (sget-in (d/entity db version-id)
                                 [:version/tx :db/id])}])
 
-(defn- make-parent-txpart [db reflect-id & [{:keys [attach?]
+(defn- make-parent-txpart [db wsdata path & [{:keys [attach?]
                                            :or {attach? true}}]]
-  (let [[child-wsid parent-wsid]
+  (let [{:keys [reflect-path]} (spec/conform ::parent-path path)
+        reflect-id (sget-in wsdata (conj reflect-path :target))
+        [child-wsid parent-wsid]
         (d/q '[:find [?w ?p]
                :in $ ?r
                :where
@@ -788,19 +820,17 @@
           (unlock-reflect wsid)
 
           :parent
-          (-> (make-parent-txpart db (get-in wsdata (conj parent-path :target)))
-              second)
+          (-> (make-parent-txpart db wsdata path) second)
 
           :version
-          (unlock-version db (get-in wsdata (conj parent-path :target))
-                          (Integer/parseInt (last path)))
+          (-> (make-version-txpart db wsdata path) second)
 
           :child
           (unlock-child db (get-in wsdata (conj (pop parent-path)
                                                 :target))
                         (get-in wsdata (conj path :wsid)))
 
-          :default
+          :hypertext
           (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
