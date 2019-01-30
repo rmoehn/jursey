@@ -1,6 +1,30 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflection – pass locked parent
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "r"])
+    (run [:ask "Do you think I have a good $r.parent?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.0"]))
+
+(check!
+    #{{"q" "Do you think I have a good [0: \n{:max-v 0,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+]?",
+       "sq" {},
+       "r" :locked}})
+
 ;;;; Scenario: Reflection – pass locked child
 
 (do (set-up {:reset? true})
@@ -260,3 +284,4 @@
 ;; - Pointing to nested hypertext ($sq.0.0).
 ;; - Unlocking a grandparent.
 ;; - Reachability. Draw a tree and deduce reachability test cases from it.
+;; - Add assertions for the invariants, then run random tests.

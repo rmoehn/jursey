@@ -156,6 +156,7 @@
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
+;; TODO: Use the ::*-path specs for identification. (RM 2019-01-30)
 (defn target-type [_ wsdata path]
   (let [parent-path (pop path)
         parent-type (get-in wsdata (conj parent-path :type))]
@@ -169,10 +170,12 @@
 
 (defmulti get-target target-type)
 
+;; TODO: Do all the methods return a vector with one transaction map? If yes,
+;; remove the vector and adapt the caller. (RM 2019-01-30)
 (defmethod get-target :reflection-root [db {wsid :id} _]
-  (let [tempid (d/tempid :db.part/user)]
-    [tempid
-     [{:db/id             tempid
+  (let [rid (d/tempid :db.part/user)]
+    [rid
+     [{:db/id             rid
        :reflect/ws        wsid
        :reflect/reachable (-> (d/basis-t db) d/t->tx)}]]))
 ;; basis-t is the last transaction, so the transaction where the target is
@@ -183,14 +186,26 @@
                                  :_ #{"children"}
                                  :child ::strnum))
 
+;; TODO: This overlaps a lot with unlock-child. Find a way to avoid
+;; duplication. Maybe analogous to make-parent-txpart. (RM 2019-01-30)
 (defmethod get-target :child [db wsdata path]
   (let [{:keys [version-path]} (spec/conform ::child-path path)
         version (d/entity db (sget-in wsdata (conj version-path :target)))
-        tempid (d/tempid :db.part/user)]
-    [tempid
-     [{:db/id tempid
+        rid (d/tempid :db.part/user)]
+    [rid
+     [{:db/id rid
        :reflect/ws (sget-in wsdata (conj path :wsid))
        :reflect/reachable (sget-in version [:version/tx :db/id])}]]))
+
+(spec/def ::parent-path (spec/cat :reflect-path (spec/* string?)
+                                  :_ #{"parent"}))
+
+(declare make-parent-txpart)
+
+(defmethod get-target :parent [db wsdata path]
+  (let [{:keys [reflect-path]} (spec/conform ::parent-path path)]
+    (make-parent-txpart db (sget-in wsdata (conj reflect-path :target))
+                        {:attach? false})))
 
 (defmethod get-target :default [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
@@ -204,8 +219,6 @@
      :pointer {:pointer/name    pointer
                :pointer/locked? (sget-in wsdata (conj path :locked?))
                :pointer/target  target}}))
-;; I need to separate the :pointer/target. If there is no target, I need to
-;; find out what the path means and create a target transaction map.
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
 ;; structures". That's why I call such a data structure (list of lists or maps)
@@ -263,6 +276,17 @@
         (sget :txreq))))
 
 (comment
+
+  (do (set-up {:reset? true})
+      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+      (start-working conn)
+      (run [:ask "What is the capital city of $q.0?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "r"])
+      (run [:ask "Do you think I have a good $r.parent?"])
+      (run [:unlock "sq.0.a"])
+      (run [:unlock "q.0"])
+      (run [:unlock "q.0.0"]))
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
@@ -729,7 +753,8 @@
     :reflect/reachable (sget-in (d/entity db version-id)
                                 [:version/tx :db/id])}])
 
-(defn- unlock-parent [db reflect-id]
+(defn- make-parent-txpart [db reflect-id & [{:keys [attach?]
+                                           :or {attach? true}}]]
   (let [[child-wsid parent-wsid]
         (d/q '[:find [?w ?p]
                :in $ ?r
@@ -741,12 +766,14 @@
         child-created-txid (first (get-ws-txids db child-wsid))
         reachable-txid (->> (get-ws-txids db parent-wsid)
                             (filter #(< % child-created-txid))
-                            last)]
-    [{:db/id          reflect-id
-      :reflect/parent "rid"}
-     {:db/id             "rid"
-      :reflect/ws        parent-wsid
-      :reflect/reachable reachable-txid}]))
+                            last)
+        rid (d/tempid :db.part/user)]
+    [rid
+     (cond-> [{:db/id             rid
+               :reflect/ws        parent-wsid
+               :reflect/reachable reachable-txid}]
+             attach? (conj {:db/id          reflect-id
+                            :reflect/parent rid}))]))
 
 ;; TODO: Check that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
@@ -754,13 +781,15 @@
         parent-path (pop path)
 
         txreq
-        ;; MAYBE TODO: Maybe turn this into a multimethod. (RM 2019-01-29)
+        ;; MAYBE TODO: Maybe turn this into a multimethod. Cf. get-target. (RM
+        ;; 2019-01-29)
         (case (target-type db wsdata path)
           :reflection-root
           (unlock-reflect wsid)
 
           :parent
-          (unlock-parent db (get-in wsdata (conj parent-path :target)))
+          (-> (make-parent-txpart db (get-in wsdata (conj parent-path :target)))
+              second)
 
           :version
           (unlock-version db (get-in wsdata (conj parent-path :target))
