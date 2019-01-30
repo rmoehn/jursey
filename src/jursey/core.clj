@@ -196,8 +196,8 @@
         version (d/entity db (sget-in wsdata (conj version-path :target)))
         rid (d/tempid :db.part/user)]
     [rid
-     [{:db/id rid
-       :reflect/ws (sget-in wsdata (conj path :wsid))
+     [{:db/id             rid
+       :reflect/ws        (sget-in wsdata (conj path :wsid))
        :reflect/reachable (sget-in version [:version/tx :db/id])}]]))
 
 (spec/def ::parent-path (spec/cat :reflect-path (spec/+ string?)
@@ -223,7 +223,7 @@
         path (->path pointer)
         [target txreq] (get-target db wsdata path)]
     {:repr    dollar-pointer
-     :txreq txreq
+     :txreq   txreq
      :pointer {:pointer/name    pointer
                :pointer/locked? (get-in wsdata (conj path :locked?) true)
                :pointer/target  target}}))
@@ -349,10 +349,10 @@
       (get target :reflect/ws)
       (get-reflect-data db (sget target :db/id))
 
-    :else
-    (throw (ex-info "Don't know how to handle this pointer target."
-                    {:target target
-                     :pull   (d/pull db '[*] (sget target :db/id))})))))
+      :else
+      (throw (ex-info "Don't know how to handle this pointer target."
+                      {:target target
+                       :pull   (d/pull db '[*] (sget target :db/id))})))))
 
 (spec/def :db/id int?)
 (spec/def ::entity (spec/keys :req [:db/id]))
@@ -495,12 +495,12 @@
   (let [{{qid :db/id} :ws/question
          sub-qas      :ws/sub-qa}
         (d/pull db '[*] id)]
-    {:id  id
-     "q"  (some->> qid (get-htdata db))
-     "sq" (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
-     "r"  (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
-            (get-reflect-data db reflect-id)
-            {:locked? true})
+    {:id      id
+     "q"      (some->> qid (get-htdata db))
+     "sq"     (string-indexed-map #(get-qadata db %) (sort-by :db/id sub-qas))
+     "r"      (if-let [reflect-id (get-in (d/entity db id) [:ws/reflect :db/id])]
+                (get-reflect-data db reflect-id)
+                {:locked? true})
      :locked? false}))
 
 (defn render-wsdata [{reflect-data "r" :as wsdata}]
@@ -518,7 +518,7 @@
 
 (defn get-cp-version-txtree [version]
   {:version/number (sget version :version/number)
-   :version/tx (sget-in version [:version/tx :db/id])})
+   :version/tx     (sget-in version [:version/tx :db/id])})
 
 ;; Note: I don't need to copy anything else. Reflection pointers can only
 ;; point to a reflect or a reflect together with exactly one version. So I
@@ -733,11 +733,11 @@
 
 ;; TODO: Make sure that the version <= max-v. (RM 2019-01-23)
 (defn- make-version-txpart [db wsdata path & [{:keys [attach?]
-                                               :or {attach? true}}]]
+                                               :or   {attach? true}}]]
   (let [{:keys [reflect-path version]} (spec/conform ::version-path path)
         reflect-id (sget-in wsdata (conj reflect-path :target))
 
-        {{wsid :db/id} :reflect/ws
+        {{wsid :db/id}      :reflect/ws
          {reachable :db/id} :reflect/reachable}
         (d/entity db reflect-id)
 
@@ -769,7 +769,7 @@
                                 [:version/tx :db/id])}])
 
 (defn- make-parent-txpart [db wsdata path & [{:keys [attach?]
-                                           :or {attach? true}}]]
+                                              :or   {attach? true}}]]
   (let [{:keys [reflect-path]} (spec/conform ::parent-path path)
         reflect-id (sget-in wsdata (conj reflect-path :target))
         [child-wsid parent-wsid]
