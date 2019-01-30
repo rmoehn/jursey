@@ -290,11 +290,7 @@
       (start-working conn)
       (run [:ask "What is the capital city of $q.0?"])
       (run [:unlock "sq.0.a"])
-      (run [:unlock "r"])
-      (run [:ask "Do you think I have a good $r.parent?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "q.0"])
-      (run [:unlock "q.0.0"]))
+      (run [:unlock "r"]))
 
   (get-wsdata (d/db conn) @last-shown-wsid)
 
@@ -550,13 +546,28 @@
 
 (declare get-cp-hypertext-txtree)
 
+(defn get-cp-version-txtree [version]
+  {:version/number (sget version :version/number)
+   :version/tx (sget version [:version/tx :db/id])})
+
+;; Note: I don't need to copy anything else. Reflection pointers can only
+;; point to a reflect or a reflect together with exactly one version. So I
+;; don't need to make a recursive call. What about the workspaces and
+;; actions that reflects point at? I don't need to copy them, either. I only
+;; need to copy something if parts of it might be unlocked in another place. A
+;; workspace or action cannot be passed around on its own. It has to be part
+;; of a reflection structure. And in there it is immutable. Of course we can
+;; pass around a hypertext from within that workspace, but copying of
+;; hypertexts is already supported.
 (defn get-cp-reflect-txtree [db id]
   (let [{{wsid :db/id}           :reflect/ws
-         {reachable-txid :db/id} :reflect/reachable}
+         {reachable-txid :db/id} :reflect/reachable
+         versions                :reflect/version}
         (d/entity db id)]
     (assert wsid)
     {:reflect/ws        wsid
-     :reflect/reachable (or reachable-txid "datomic.tx")}))
+     :reflect/reachable reachable-txid
+     :reflect/version   (map get-cp-version-txtree versions)}))
 
 ;; Note: This locks all the pointer copies, because that's what I need when I
 ;; copy a hypertext to another workspace. Adapt if you need faithfully copied
