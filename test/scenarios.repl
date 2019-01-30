@@ -1,6 +1,122 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflection – pass locked parent version
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (run [:ask "Did I have a good $r.parent.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"]))
+
+(check!
+    #{{"q" "Did I have a good [0: \n{:max-v 0,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+]?",
+       "sq" {},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass locked child version
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Austin"])
+    (run [:unlock "r"])
+    (run [:unlock "r.3"])
+    (run [:unlock "r.3.children.0"])
+    (run [:ask "Was the pointer in the question in $r.3.children.0.1 unlocked?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Yes."]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+             "1" {"q" "Was the pointer in the question in $r.3.children.0.1 unlocked?",
+                  "a" "Yes."}},
+       "r" {:max-v 7,
+            "parent" :locked,
+            "3" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                  "a" "Austin"}},
+                       "r" {:max-v 3, "parent" :locked}},
+                 "children" {"0" {:max-v 1, "parent" :locked}},
+                 "act" [:act.command/unlock "r.3"]}}}})
+
+;;;; Scenario: Reflection – pass unlocked top-level version
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "r"])
+    (run [:unlock "r.0"])
+    (run [:ask "How was I in my younger days ($r.0)?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.1"]))
+
+(check!
+    #{{"q" "How was I in my younger days ([0: \n{:max-v 3,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]},
+ “1”
+ {“ws”
+  {“q” “What is the capital of $0?”,
+   “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
+   “r” :locked},
+  “children” {“0” :locked},
+  “act” [:act.command/unlock “r”]}}
+])?",
+       "sq" {},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass locked top-level version
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "r"])
+    (run [:ask "How was I in my younger days ($r.0)?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.1"]))
+
+(check!
+    #{{"q" "How was I in my younger days ([0: \n{:max-v 2,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]},
+ “1”
+ {“ws”
+  {“q” “What is the capital of $0?”,
+   “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
+   “r” :locked},
+  “children” {“0” :locked},
+  “act” [:act.command/unlock “r”]}}
+])?",
+       "sq" {},
+       "r" :locked}})
+
 ;;;; Scenario: Reflection – pass locked parent
 
 (do (set-up {:reset? true})

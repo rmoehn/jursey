@@ -225,7 +225,7 @@
     {:repr    dollar-pointer
      :txreq txreq
      :pointer {:pointer/name    pointer
-               :pointer/locked? (sget-in wsdata (conj path :locked?))
+               :pointer/locked? (get-in wsdata (conj path :locked?) true)
                :pointer/target  target}}))
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
@@ -282,34 +282,6 @@
         httree (replace {:S :embedded} (parse-ht ht))]
     (-> (process-httree db wsdata [] httree)
         (sget :txreq))))
-
-(comment
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      (run [:ask "What is the capital city of $q.0?"])
-      (run [:unlock "sq.0.a"])
-      (run [:unlock "r"]))
-
-  (get-wsdata (d/db conn) @last-shown-wsid)
-
-
-  (stacktrace/e)
-
-  (get-wsdata (d/db conn) @last-shown-wsid)
-
-  (d/pull (d/db conn) '[*] 17592186045440)
-
-  (d/q '[:find ?e ?a ?v ?op
-         :in $ ?log
-         :where
-         [(tx-data ?log 13194139534333) [[?e ?a ?v _ ?op]]]]
-       (d/db conn) (d/log conn))
-
-  (get-ws-txids (d/as-of (d/db conn) 13194139534333) @last-shown-wsid)
-
-  )
 
 
 ;;;; Rendering a workspace as a string
@@ -548,7 +520,7 @@
 
 (defn get-cp-version-txtree [version]
   {:version/number (sget version :version/number)
-   :version/tx (sget version [:version/tx :db/id])})
+   :version/tx (sget-in version [:version/tx :db/id])})
 
 ;; Note: I don't need to copy anything else. Reflection pointers can only
 ;; point to a reflect or a reflect together with exactly one version. So I
@@ -775,6 +747,7 @@
         int-version (Integer/parseInt version)]
     [rid
      [(-> {:db/id           rid
+           :reflect/ws      wsid
            :reflect/version vid}
           (plumbing/assoc-when
             :reflect/reachable
