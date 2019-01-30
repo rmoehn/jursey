@@ -683,7 +683,7 @@
             :tx/act "actid"}])]
     final-txreq))
 
-(defn- unlock-by-pmap [db wsid {target-id :target pid :id} pointer]
+(defn- unlock-by-pmap [db wsid {target-id :target pid :id}]
   (let [target (d/pull db '[*] target-id)
 
         set-waiting-txreq
@@ -815,7 +815,7 @@
                         (get-in wsdata (conj path :wsid)))
 
           :hypertext
-          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer)) pointer))]
+          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer))))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
@@ -933,8 +933,7 @@
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
-                             (unlock-by-pmap
-                               db wsid locked-pmap (str locked-pmap)))
+                             (unlock-by-pmap db wsid locked-pmap))
                 (recur (d/db conn)))))))))
 
 (defn get-root-qas [conn agent]
