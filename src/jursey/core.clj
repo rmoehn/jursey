@@ -916,6 +916,17 @@
         (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-txreq)))
 
+;; Note: I wanted to do this with Specter, but that was difficult.
+(defn- first-locked-pointer [htdata]
+  (cond
+    (= (get htdata :type) :hypertext) (->> htdata
+                                           (filter #(string? (key %)))
+                                           (map #(first-locked-pointer (val %)))
+                                           (filter some?)
+                                           first)
+    (get htdata :locked?)             htdata
+    :default                          nil))
+
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
 ;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
 ;; directly. For this I'd have to find or write a walker that gives me not
@@ -929,8 +940,7 @@
       (if (get (d/entity db wsid) :ws/waiting-for)
         [question :waiting]
         (let [wsdata (get-wsdata db wsid)
-              locked-pmap (s/select-first ["sq" "0" "a" (s/walker :locked?)]
-                                          wsdata)]
+              locked-pmap (first-locked-pointer (get-in wsdata ["sq" "0" "a"]))]
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
