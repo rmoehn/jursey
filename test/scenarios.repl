@@ -1,6 +1,45 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflection – two reflection pointers in question and answer
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "r"])
+    (run [:unlock "r.1"])
+    (run [:ask "How do $r.0 and $r.1.children.0 look to you?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (run [:unlock "r.parent.2"])
+    (run [:reply "I guess they look just like $r.parent.0 and $r.parent.2.children.0"])
+    (run [:unlock "sq.1.a.0"])
+    (run [:unlock "sq.1.a.1"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked},
+             "1" {"q" "How do $r.0 and $r.1.children.0 look to you?",
+ "a" "I guess they look just like [0: \n{:max-v 3,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+] and [1: \n{:max-v 0, “parent” :locked}\n]"}},
+       "r" {:max-v 7,
+            "parent" :locked,
+            "1" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                  "a" :locked}},
+                       "r" :locked},
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "r"]}}}})
+
 ;;;; Scenario: Reflection – delayed unlock
 
 (do (set-up {:reset? true})
