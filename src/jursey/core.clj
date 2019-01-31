@@ -916,21 +916,16 @@
         (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-txreq)))
 
-;; I wanted to do this with Specter, but that was difficult.
+;; Note: I wanted to do this with Specter, but that was difficult.
 (defn- first-locked-pointer [htdata]
   (cond
-    (= (get htdata :type) :hypertext)
-    (->> htdata
-         (filter #(string? (key %)))
-         (map #(first-locked-pointer (val %)))
-         (filter some?)
-         first)
-
-    (get htdata :locked?)
-    htdata
-
-    :default
-    nil))
+    (= (get htdata :type) :hypertext) (->> htdata
+                                           (filter #(string? (key %)))
+                                           (map #(first-locked-pointer (val %)))
+                                           (filter some?)
+                                           first)
+    (get htdata :locked?)             htdata
+    :default                          nil))
 
 ;; MAYBE TODO: Change the unlock, so that it goes through the same route as
 ;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
@@ -949,66 +944,9 @@
           (if (nil? locked-pmap) ; No locked pointers left.
             [question (render-htdata (sget-in wsdata ["sq" "0" "a"]))]
             (do @(d/transact conn
-                                 (unlock-by-pmap db wsid locked-pmap))
-                    ;; Note that this doesn't create a :tx/act entry.
-                    (recur (d/db conn)))))))))
-
-(comment
-
-  (do (set-up {:reset? true})
-      (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-      (start-working conn)
-      ;(run [:ask "What is the capital city of $q.0?"])
-      ;(run [:unlock "sq.0.a"])
-      ;(run [:unlock "q.0"])
-      (run [:reply "[Austin [Stephen F.]], I saw it in $r."])
-      )
-
-  (get-root-qas conn test-agent)
-
-
-  (run [:unlock "sq.0.a.0"])
-  (run [:unlock "sq.0.a.0.0"])
-  (run [:unlock "sq.0.a.1"])
-
-  (def wsdata (get-wsdata (d/db conn) @last-shown-wsid))
-  wsdata
-
-
-  (first-locked-pointer (sget-in wsdata ["sq" "0" "a"]))
-
-  (s/select ["sq" "0" "a"
-             (s/recursive-path [] p
-                               (s/cond-path
-                                 #(and (map? %) (get % :locked?))
-                                 s/STAY
-
-                                 #(= (and (map? %) (get % :type)) :hypertext)
-                                 [s/ALL (s/filterer #(string? (key %))) s/LAST]
-                                 p
-
-                                 (s/putval true)
-                                 s/STOP))]
-            wsdata)
-
-
-
-  (def wsid @last-shown-wsid)
-
-
-  (swap! last-shown-wsid (constantly 17592186045424))
-
-  (run [:unlock "sq.0.a"])
-
-  (d/q '[:find [?ws ...]
-         :in $ ?handle
-         :where
-         [?a :agent/handle ?handle]
-         [?a :agent/root-ws ?ws]
-         (not [?ws :ws/waiting-for _])]
-       (d/db conn) test-agent)
-
-  )
+                             (unlock-by-pmap db wsid locked-pmap))
+                ;; Note that this doesn't create a :tx/act entry.
+                (recur (d/db conn)))))))))
 
 (defn get-root-qas [conn agent]
   (let [db (d/db conn)

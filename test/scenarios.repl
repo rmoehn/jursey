@@ -1,6 +1,155 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflection – delayed unlock
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "Have a look at $r."])
+    (run [:ask "Do you have a [dog]?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"]))
+
+(check!
+    #{{"q" "Have a look at [0: \n{:max-v 0, “parent” :locked}\n].",
+       "sq" {},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass unlocked reflected pointer in non-root reply
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (run [:unlock "r.parent.0"])
+    (run [:reply "$r.parent.0.ws.q looks funny to me."])
+    (run [:unlock "sq.0.a.0"])
+    (run [:unlock "sq.0.a.0.0"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                  "a" "[0: What is the capital of [0: Texas]?] looks funny to me."}},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass locked reflected pointer in root reply
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
+    (start-working conn)
+    (run [:unlock "r"])
+    (run [:unlock "r.0"])
+    (run [:reply "I also wonder what the capital of $r.0.ws.q.0 is."])
+    (get-root-qas conn test-agent))
+
+;;;; Scenario: Reflection – pass locked version
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
+    (start-working conn)
+    (run [:unlock "q.0"])
+    (run [:unlock "r"])
+    (run [:reply "Look at how I looked in the beginning: $r.0"])
+    (get-root-qas conn test-agent))
+
+(check! #{'(["What is the capital of [1: Texas [1: (USA)]]?"
+            "Look at how I looked in the beginning: [0: \n{:max-v 2,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/unlock “q.0”]}}
+]"])})
+
+;;;; Scenario: Reflection – pass locked child and launder a reflected hypertext pointer
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:ask "Do you know $q.0?"])
+    (run [:unlock "r"])
+    (run [:unlock "r.3"])
+    (run [:reply "Ask $r.3.children.0."])
+    (run [:unlock "sq.0.a.0"])
+    (run [:unlock "sq.0.a.0.0"])
+    (run [:ask "Give me $sq.0.a.0.0.ws.q.0."])
+    (run [:unlock "sq.1.a"])
+    (run [:reply "$q.0. You asked for it."])
+    (run [:unlock "sq.1.a.0"])
+    (run [:unlock "sq.1.a.0.0"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?",
+ "a" "Ask [0: \n{:max-v 0,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “Do you know $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” nil}}
+]."},
+             "1" {"q" "Give me $sq.0.a.0.0.ws.q.0.",
+                  "a" "[0: Texas [0: (USA)]]. You asked for it."}},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – pass locked version and unlocked parent in non-root answer
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (run [:reply "I have no idea. I don't like $r.parent."])
+    (run [:unlock "sq.0.a.0"])
+    (run [:unlock "sq.0.a.0.0"])
+    (run [:ask "$sq.0.a.0.0 is a curious case, isn't it?"])
+    (run [:unlock "sq.1.a"])
+    (run [:reply "I don't even want to look at $q.0."])
+    (run [:unlock "sq.1.a.0"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?",
+             "a" "I have no idea. I don't like [0: \n{:max-v 0,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+]."},
+             "1" {"q" "$sq.0.a.0.0 is a curious case, isn't it?",
+                  "a" "I don't even want to look at [0: \n{:max-v 0,
+ “parent” :locked,
+ “0”
+ {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
+  “children” {},
+  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+]."}},
+       "r" :locked}})
+
+;;;; Scenario: Reflection – root reply with hypertext and reflection pointer
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:unlock "q.0"])
+    (run [:unlock "r"])
+    (run [:reply "[Austin [Stephen F.]], I saw it in $r."])
+    (get-root-qas conn test-agent))
+
+(check!
+    #{'(["What is the capital of [1: Texas]?"
+         "[0: Austin [0: Stephen F.]], I saw it in [1: \n{:max-v 2, “parent” :locked}\n]."])})
+
 ;;;; Scenario: Reflection – pass locked parent version
 
 (do (set-up {:reset? true})
@@ -25,7 +174,7 @@
        "sq" {},
        "r" :locked}})
 
-;;;; Scenario: Reflection – pass locked child version
+;;;; Scenario: Reflection – pass locked child version
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -56,7 +205,7 @@
                  "children" {"0" {:max-v 1, "parent" :locked}},
                  "act" [:act.command/unlock "r.3"]}}}})
 
-;;;; Scenario: Reflection – pass unlocked top-level version
+;;;; Scenario: Reflection – pass unlocked top-level version
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -87,7 +236,7 @@
        "sq" {},
        "r" :locked}})
 
-;;;; Scenario: Reflection – pass locked top-level version
+;;;; Scenario: Reflection – pass locked top-level version
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
@@ -117,7 +266,7 @@
        "sq" {},
        "r" :locked}})
 
-;;;; Scenario: Reflection – pass locked parent
+;;;; Scenario: Reflection – pass locked parent
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
