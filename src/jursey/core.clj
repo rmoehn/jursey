@@ -5,7 +5,7 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [cognitect.rebl :as rebl]
-            [cognitect.transcriptor :as transcriptor]
+            [cognitect.transcriptor :as transcriptor :refer [check!]]
             [com.rpl.specter :as s]
             [datomic.api :as d]
             datomic-helpers
@@ -112,6 +112,8 @@
 ;;;; Version API
 (def --Version-API)
 
+;; TODO: Remove the act.command/, at least when rendering it. Change the
+;; scenario tests accordingly. (RM 2019-02-03)
 (defn get-version-act [db id]
   (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
                                    :in $ ?v
@@ -194,6 +196,9 @@
 
 (defmulti get-target target-type)
 
+;; TODO: This supports only a top-level reflection root. Support deeper
+;; reflection roots too, for pointer laundering. This is not crucial, because
+;; the user can refer to the same thing by the version. (RM 2019-02-04)
 (defmethod get-target :reflection-root [db {wsid :id} _]
   (let [rid (d/tempid :db.part/user)]
     [rid

@@ -1,6 +1,77 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:reply "Niniveh"])
+    (run [:unlock "r"])
+    (run [:unlock "r.2"])
+    (run [:ask "Did $r.2.children.0 unlock the pointer in its question?"])
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.0"])
+    (run [:reply "No, it didn't."])
+    (run [:ask "What is the capital city of q.0? Make sure to unlock the pointer."])
+    (run [:unlock "sq.2.a"])
+    (run [:unlock "r"])
+    (run [:reply "There is no pointer. See $r.0. Did you forget to write a dollar sign?"])
+    (run [:unlock "sq.2.a.0"]))
+
+(check!
+  #{{"q" "What is the capital of $0?",
+     "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Niniveh"},
+           "1" {"q" "Did $r.2.children.0 unlock the pointer in its question?",
+                "a" "No, it didn't."},
+           "2" {"q" "What is the capital city of q.0? Make sure to unlock the pointer.",
+                "a" "There is no pointer. See [0: \n{:max-v 1,
+ “parent” :locked,
+ “0”
+ {“ws”
+  {“q”
+   “What is the capital city of q.0? Make sure to unlock the pointer.”,
+   “sq” {},
+   “r” :locked},
+  “children” {},
+  “act” [:act.command/unlock “r”]}}
+]. Did you forget to write a dollar sign?"}},
+     "r" {:max-v 9,
+          "parent" :locked,
+          "2" {"ws" {"q" "What is the capital of $0?",
+                     "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                "a" "Niniveh"}},
+                     "r" :locked},
+               "children" {"0" :locked},
+               "act" [:act.command/unlock "r"]}}}})
+
+;; TODO: When laundering of nested reflection roots is supported, add the
+;; rest of scenarios/07-reflect-ask-reply.edn. (RM 2019-02-04)
+;(run [:ask "Give me this pointer unchanged: $sq.2.a.0.0.ws.r"])
+
+;;;; Scenario: Reflect earlier reflect
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (def ws1 (run [:unlock "r"]))
+    (run [:ask "What is the capital city of $q.0?"])
+    (def ws3 (run [:unlock "r.1"]))
+    (run [:unlock "r.3"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked}},
+       "r" {:max-v 4,
+            "parent" :locked,
+            "1" {"ws" ws1,
+                 "children" {},
+                 "act" [:act.command/ask "What is the capital city of $q.0?"]},
+            "3" {"ws" ws3,
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "r.3"]}}}})
+
 ;;;; Scenario: Reflect – unlock all versions
 
 (do (set-up {:reset? true})
@@ -41,6 +112,120 @@
                        "r" :locked},
                  "children" {"0" :locked},
                  "act" [:act.command/unlock "r"]}}}})
+
+;;;; Scenario: Reflect reflect reflect
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+
+    (run [:unlock "q.0"])
+    (run [:ask "Who was the father of $q.0?"])
+    (run [:unlock "sq.0.a"])
+
+    (run [:unlock "r"])
+    (run [:unlock "r.parent"])
+    (def final-grandchild-ws (run [:unlock "r.parent.1"]))
+    (run [:reply "Stephen F. Austin"])
+
+    (run [:unlock "r"])
+    (run [:unlock "r.3"])
+    (run [:unlock "r.3.children.0"])
+    (def final-child-ws (run [:unlock "r.3.children.0.3"]))
+    final-child-ws)
+
+(check!
+    #{{"q" "What is the capital city of [0: Texas]?",
+       "sq" {"0" {"q" "Who was the father of [q.0: Texas]?", "a" "Stephen F. Austin"}},
+       "r" {:max-v 7,
+            "parent" :locked,
+            "3" {"ws" {"q" "What is the capital city of [0: Texas]?",
+                       "sq" {"0" {"q" "Who was the father of [q.0: Texas]?",
+                                  "a" "Stephen F. Austin"}},
+                       "r" :locked},
+                 "children" {"0" {:max-v 3,
+                                  "parent" :locked,
+                                  "3" {"ws" final-grandchild-ws
+                                       "children" {}
+                                       "act" [:act.command/reply "Stephen F. Austin"]}}},
+                 "act" [:act.command/unlock "r"]}}}})
+
+(do (run [:reply "Austin"])
+    (run [:unlock "r"])
+    (run [:unlock "r.2"])
+    (run [:unlock "r.2.children.0"])
+    (run [:unlock "r.2.children.0.7"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"}},
+       "r" {:max-v 6,
+            "parent" :locked,
+            "2" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                  "a" "Austin"}},
+                       "r" :locked},
+                 "children" {"0" {:max-v 7,
+                                  "parent" :locked,
+                                  "7" {"ws" final-child-ws
+                                       "children" {"0" :locked}
+                                       "act" [:act.command/reply "Austin"]}}},
+                 "act" [:act.command/unlock "r"]}}}})
+
+;;;; Scenario: Reflection – own past
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "Why do you feed your dog whipping cream?"])
+    (run [:unlock "sq.0.a"])
+    (run [:unlock "q.0"])
+    (run [:reply "Austin"])
+    (run [:unlock "r"])
+    (run [:unlock "r.0"])
+    (run [:unlock "r.1"])
+    (run [:unlock "r.6"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+             "1" {"q" "Why do you feed your dog whipping cream?", "a" :locked}},
+       "r" {:max-v 7,
+            "parent" :locked,
+            "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
+                 "children" {},
+                 "act" [:act.command/ask "What is the capital city of $q.0?"]},
+            "1" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                  "a" :locked}},
+                       "r" :locked},
+                 "children" {"0" :locked},
+                 "act" [:act.command/ask "Why do you feed your dog whipping cream?"]},
+            "6" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                  "a" "Austin"},
+                             "1" {"q" "Why do you feed your dog whipping cream?",
+                                  "a" :locked}},
+                       "r" {:max-v 6,
+                            "parent" :locked,
+                            "0" {"ws" {"q" "What is the capital of $0?",
+                                       "sq" {},
+                                       "r" :locked},
+                                 "children" {},
+                                 "act" [:act.command/ask
+                                        "What is the capital city of $q.0?"]},
+                            "1" {"ws" {"q" "What is the capital of $0?",
+                                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                                  "a" :locked}},
+                                       "r" :locked},
+                                 "children" {"0" :locked},
+                                 "act" [:act.command/ask
+                                        "Why do you feed your dog whipping cream?"]}}},
+                 "children" {"0" :locked, "1" :locked},
+                 "act" [:act.command/unlock "r.6"]}}}})
 
 ;;;; Scenario: Reflection – two reflection pointers in question and answer
 
