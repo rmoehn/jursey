@@ -1,6 +1,47 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;;;; Scenario: Reflect – unlock all versions
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "what is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:reply "Austin [Keep it weird.]"])
+    (run [:unlock "r"])
+    (run [:unlock "r.0"])
+    (run [:unlock "r.1"])
+    (run [:unlock "r.2"])
+    (run [:unlock "r.3"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "what is the capital city of $q.0?", "a" "Austin $0"}},
+       "r" {:max-v 7,
+            "parent" :locked,
+            "3" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                                  "a" "Austin $0"}},
+                       "r" {:max-v 3, "parent" :locked}},
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "r.0"]},
+            "1" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                                  "a" :locked}},
+                       "r" :locked},
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "sq.0.a"]},
+            "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
+                 "children" {},
+                 "act" [:act.command/ask "what is the capital city of $q.0?"]},
+            "2" {"ws" {"q" "What is the capital of $0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                                  "a" "Austin $0"}},
+                       "r" :locked},
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "r"]}}}})
+
 ;;;; Scenario: Reflection – two reflection pointers in question and answer
 
 (do (set-up {:reset? true})

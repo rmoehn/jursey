@@ -70,25 +70,44 @@
 ;;;; Workspace API
 (def --Workspace-API)
 
-(defn get-ws-txids
-  "
+(defn get-ws-version-txids
+  "Return the IDs of all actions after which ws was showable to the user.
   Caution: This might not work with a since-db."
-  [db wsid & [{:keys [include-reply-txid?] :or {include-reply-txid? false}}]]
-  (let [first-txid (->> (d/datoms db :eavt wsid) (map :tx) sort first)
-        rest-txids (sort (d/q '[:find [?tx ...]
-                                :in $ ?ws
-                                :where
-                                [?tx :tx/ws ?ws]]
-                              (d/history db) wsid))
-        last-command (get-in (d/entity db (last rest-txids))
-                             [:tx/act :act/command])]
-    (->> (if (and (not include-reply-txid?)
-                  (= last-command :act.command/reply))
-           (butlast rest-txids)
-           rest-txids)
-         (cons first-txid)
+  [db wsid]
+  (let [;; The tx in which the ws was created.
+        first-txid (->> (d/datoms db :eavt wsid) (map :tx) sort first)]
+    (->> (list first-txid)
+         ;; Txs of all actions that didn't block ws.
+         (concat (d/q '[:find [?tx ...]
+                        :in $ ?ws
+                        :where
+                        [?tx :tx/ws ?ws]
+                        (not [?ws :ws/waiting-for _ ?tx true])
+                        ;; Because ws won't be shown after reply.
+                        (not-join [?tx]
+                                  [?tx :tx/act ?a]
+                                  [?a :act/command :act.command/reply])]
+                      (d/history db) wsid))
+         ;; Txs of all actions that unblocked ws.
+         (concat (d/q '[:find [?tx ...]
+                        :in $ ?ws
+                        :where
+                        [?ws :ws/waiting-for _ ?tx false]]
+                      (d/history db) wsid))
+         sort
          vec)))
 
+(defn get-ws-act-txids
+  "Return the IDs of transactions that resulted from an action in ws.
+  Caution: This might not work with a since-db."
+  [db wsid]
+  (->> (d/q '[:find [?tx ...]
+              :in $ ?ws
+              :where
+              [?tx :tx/ws ?ws]]
+            (d/history db) wsid)
+       sort
+       vec))
 
 ;;;; Version API
 (def --Version-API)
@@ -101,9 +120,9 @@
                                    [?r :reflect/ws ?ws]
                                    [?v :version/tx ?tx]]
                                  db id)
-        next-version-txid (->> (get-ws-txids db wsid {:include-reply-txid? true})
-                               (drop-while #(not= version-txid %))
-                               second)]
+        next-version-txid (->> (get-ws-act-txids db wsid)
+                               (drop-while #(<= % version-txid))
+                               first)]
     (when next-version-txid
       (d/q '[:find [?command ?content]
              :in $ ?tx
@@ -465,7 +484,7 @@
         reachable-db (if reachable-txid
                        (d/as-of db reachable-txid)
                        db)
-        version-count (count (get-ws-txids reachable-db wsid))]
+        version-count (count (get-ws-version-txids reachable-db wsid))]
     (assert wsid)
     (into {:type    :reflect
            :target  id
@@ -758,7 +777,7 @@
               :else nil)))
       {:db/id          vid
        :version/number int-version
-       :version/tx     (-> (get-ws-txids db wsid) (nth int-version))}]]))
+       :version/tx     (-> (get-ws-version-txids db wsid) (nth int-version))}]]))
 
 (defn- unlock-child [db version-id child-wsid]
   [{:db/id         version-id
@@ -780,8 +799,8 @@
                [?qa :qa/ws ?w]
                [?p :ws/sub-qa ?qa]]
              db reflect-id)
-        child-created-txid (first (get-ws-txids db child-wsid))
-        reachable-txid (->> (get-ws-txids db parent-wsid)
+        child-created-txid (first (get-ws-version-txids db child-wsid))
+        reachable-txid (->> (get-ws-version-txids db parent-wsid)
                             (filter #(< % child-created-txid))
                             last)
         rid (d/tempid :db.part/user)]
@@ -997,6 +1016,7 @@
   (in-ns 'jursey.core)
   (stacktrace/e)
 
+  ;; Don't forget to save test/scenarios.repl!
   (transcriptor/run "test/scenarios.repl")
 
 
