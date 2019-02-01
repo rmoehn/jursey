@@ -5,7 +5,7 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
             [cognitect.rebl :as rebl]
-            [cognitect.transcriptor :as transcriptor]
+            [cognitect.transcriptor :as transcriptor :refer [check!]]
             [com.rpl.specter :as s]
             [datomic.api :as d]
             datomic-helpers
