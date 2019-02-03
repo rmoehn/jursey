@@ -1,6 +1,51 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:unlock "sq.0.a"])
+    (run [:reply "Niniveh"])
+    (run [:unlock "r"])
+    (run [:unlock "r.2"])
+    (run [:ask "Did $r.2.children.0 unlock the pointer in its question?"])
+    (run [:unlock "sq.1.a"]))
+
+(run [:unlock "q.0"])
+(run [:unlock "q.0.0"])
+(run [:reply "No, it didn't."])
+(run [:ask "What is the capital city of q.0? Make sure to unlock the pointer."])
+(run [:unlock "sq.2.a"])
+(run [:unlock "r"])
+(run [:reply "There is no pointer. See $r.0. Did you forget to write a dollar sign?"])
+(run [:unlock "sq.2.a.0"])
+
+(run [:ask "Give me this pointer unchanged: $sq.2.a.0.0.ws.r"])
+;; Not supported yet.
+
+;;;; Scenario: Reflect earlier reflect
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+    (start-working conn)
+    (def ws1 (run [:unlock "r"]))
+    (run [:ask "What is the capital city of $q.0?"])
+    (def ws3 (run [:unlock "r.1"]))
+    (run [:unlock "r.3"]))
+
+(check!
+    #{{"q" "What is the capital of $0?",
+       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked}},
+       "r" {:max-v 4,
+            "parent" :locked,
+            "1" {"ws" ws1,
+                 "children" {},
+                 "act" [:act.command/ask "What is the capital city of $q.0?"]},
+            "3" {"ws" ws3,
+                 "children" {"0" :locked},
+                 "act" [:act.command/unlock "r.3"]}}}})
+
 ;;;; Scenario: Reflect – unlock all versions
 
 (do (set-up {:reset? true})
@@ -44,12 +89,7 @@
 
 ;;;; Scenario: Reflect reflect reflect
 
-;; Note: There might be a better way than this for saving intermediate results.
-(def final-grandchild-ws (atom nil))
-(def final-child-ws (atom nil))
-
-(do
-    (set-up {:reset? true})
+(do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
     (run [:ask "What is the capital city of $q.0?"])
@@ -61,15 +101,14 @@
 
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
-    (run [:unlock "r.parent.1"])
-    (swap! final-grandchild-ws (constantly *1))
+    (def final-grandchild-ws (run [:unlock "r.parent.1"]))
     (run [:reply "Stephen F. Austin"])
 
     (run [:unlock "r"])
     (run [:unlock "r.3"])
     (run [:unlock "r.3.children.0"])
-    (run [:unlock "r.3.children.0.3"])
-    (swap! final-child-ws (constantly *1)))
+    (def final-child-ws (run [:unlock "r.3.children.0.3"]))
+    final-child-ws)
 
 (check!
     #{{"q" "What is the capital city of [0: Texas]?",
@@ -82,7 +121,7 @@
                        "r" :locked},
                  "children" {"0" {:max-v 3,
                                   "parent" :locked,
-                                  "3" {"ws" @final-grandchild-ws
+                                  "3" {"ws" final-grandchild-ws
                                        "children" {}
                                        "act" [:act.command/reply "Stephen F. Austin"]}}},
                  "act" [:act.command/unlock "r"]}}}})
@@ -104,7 +143,7 @@
                        "r" :locked},
                  "children" {"0" {:max-v 7,
                                   "parent" :locked,
-                                  "7" {"ws" @final-child-ws
+                                  "7" {"ws" final-child-ws
                                        "children" {"0" :locked}
                                        "act" [:act.command/reply "Austin"]}}},
                  "act" [:act.command/unlock "r"]}}}})
