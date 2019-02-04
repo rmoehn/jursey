@@ -112,8 +112,6 @@
 ;;;; Version API
 (def --Version-API)
 
-;; TODO: Remove the act.command/, at least when rendering it. Change the
-;; scenario tests accordingly. (RM 2019-02-03)
 (defn get-version-act [db id]
   (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
                                    :in $ ?v
@@ -464,13 +462,15 @@
 
 (declare render-wsdata)
 
-(defn render-version-data [{wsdata "ws" children "children" act "act"}]
+(defn render-version-data [{wsdata "ws" children "children"
+                            [command act-content :as act] "act"}]
   {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
                                    (if (get c :locked?)
                                      :locked
                                      (render-reflect-data c))) children)
-   "act"      act})
+   "act"      (when (some? act)
+                [(keyword (name command)) act-content])})
 
 ;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
 ;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data

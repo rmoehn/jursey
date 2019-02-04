@@ -43,7 +43,7 @@
    “sq” {},
    “r” :locked},
   “children” {},
-  “act” [:act.command/unlock “r”]}}
+  “act” [:unlock “r”]}}
 ]. Did you forget to write a dollar sign?"}},
      "r" {:max-v 9,
           "parent" :locked,
@@ -52,7 +52,7 @@
                                 "a" "Niniveh"}},
                      "r" :locked},
                "children" {"0" :locked},
-               "act" [:act.command/unlock "r"]}}}})
+               "act" [:unlock "r"]}}}})
 
 ;; TODO: When laundering of nested reflection roots is supported, add the
 ;; rest of scenarios/07-reflect-ask-reply.edn. (RM 2019-02-04)
@@ -75,10 +75,10 @@
             "parent" :locked,
             "1" {"ws" ws1,
                  "children" {},
-                 "act" [:act.command/ask "What is the capital city of $q.0?"]},
+                 "act" [:ask "What is the capital city of $q.0?"]},
             "3" {"ws" ws3,
                  "children" {"0" :locked},
-                 "act" [:act.command/unlock "r.3"]}}}})
+                 "act" [:unlock "r.3"]}}}})
 
 ;;;; Scenario: Reflect – unlock all versions
 
@@ -104,22 +104,22 @@
                                   "a" "Austin $0"}},
                        "r" {:max-v 3, "parent" :locked}},
                  "children" {"0" :locked},
-                 "act" [:act.command/unlock "r.0"]},
+                 "act" [:unlock "r.0"]},
             "1" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "what is the capital city of $q.0?",
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
-                 "act" [:act.command/unlock "sq.0.a"]},
+                 "act" [:unlock "sq.0.a"]},
             "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
                  "children" {},
-                 "act" [:act.command/ask "what is the capital city of $q.0?"]},
+                 "act" [:ask "what is the capital city of $q.0?"]},
             "2" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "what is the capital city of $q.0?",
                                   "a" "Austin $0"}},
                        "r" :locked},
                  "children" {"0" :locked},
-                 "act" [:act.command/unlock "r"]}}}})
+                 "act" [:unlock "r"]}}}})
 
 ;;;; Scenario: Reflect reflect reflect
 
@@ -157,8 +157,8 @@
                                   "parent" :locked,
                                   "3" {"ws" final-grandchild-ws
                                        "children" {}
-                                       "act" [:act.command/reply "Stephen F. Austin"]}}},
-                 "act" [:act.command/unlock "r"]}}}})
+                                       "act" [:reply "Stephen F. Austin"]}}},
+                 "act" [:unlock "r"]}}}})
 
 (do (run [:reply "Austin"])
     (run [:unlock "r"])
@@ -179,8 +179,8 @@
                                   "parent" :locked,
                                   "7" {"ws" final-child-ws
                                        "children" {"0" :locked}
-                                       "act" [:act.command/reply "Austin"]}}},
-                 "act" [:act.command/unlock "r"]}}}})
+                                       "act" [:reply "Austin"]}}},
+                 "act" [:unlock "r"]}}}})
 
 ;;;; Scenario: Reflection – own past
 
@@ -205,13 +205,13 @@
             "parent" :locked,
             "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
                  "children" {},
-                 "act" [:act.command/ask "What is the capital city of $q.0?"]},
+                 "act" [:ask "What is the capital city of $q.0?"]},
             "1" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
-                 "act" [:act.command/ask "Why do you feed your dog whipping cream?"]},
+                 "act" [:ask "Why do you feed your dog whipping cream?"]},
             "6" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" "Austin"},
@@ -223,17 +223,15 @@
                                        "sq" {},
                                        "r" :locked},
                                  "children" {},
-                                 "act" [:act.command/ask
-                                        "What is the capital city of $q.0?"]},
+                                 "act" [:ask "What is the capital city of $q.0?"]},
                             "1" {"ws" {"q" "What is the capital of $0?",
                                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                                   "a" :locked}},
                                        "r" :locked},
                                  "children" {"0" :locked},
-                                 "act" [:act.command/ask
-                                        "Why do you feed your dog whipping cream?"]}}},
+                                 "act" [:ask "Why do you feed your dog whipping cream?"]}}},
                  "children" {"0" :locked, "1" :locked},
-                 "act" [:act.command/unlock "r.6"]}}}})
+                 "act" [:unlock "r.6"]}}}})
 
 ;;;; Scenario: Reflection – two reflection pointers in question and answer
 
@@ -263,7 +261,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.0?”]}}
 ] and [1: \n{:max-v 0, “parent” :locked}\n]"}},
        "r" {:max-v 7,
             "parent" :locked,
@@ -272,7 +270,7 @@
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
-                 "act" [:act.command/unlock "r"]}}}})
+                 "act" [:unlock "r"]}}}})
 
 ;;;; Scenario: Reflection – delayed unlock
 
@@ -335,7 +333,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/unlock “q.0”]}}
+  “act” [:unlock “q.0”]}}
 ]"])})
 
 ;;;; Scenario: Reflection – pass locked child and launder a reflected hypertext pointer
@@ -397,7 +395,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.0?”]}}
 ]."},
              "1" {"q" "$sq.0.a.0.0 is a curious case, isn't it?",
                   "a" "I don't even want to look at [0: \n{:max-v 0,
@@ -405,7 +403,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.0?”]}}
 ]."}},
        "r" :locked}})
 
@@ -442,7 +440,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.0?”]}}
 ]?",
        "sq" {},
        "r" :locked}})
@@ -476,7 +474,7 @@
                                   "a" "Austin"}},
                        "r" {:max-v 3, "parent" :locked}},
                  "children" {"0" {:max-v 1, "parent" :locked}},
-                 "act" [:act.command/unlock "r.3"]}}}})
+                 "act" [:unlock "r.3"]}}}})
 
 ;;;; Scenario: Reflection – pass unlocked top-level version
 
@@ -497,14 +495,14 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]},
+  “act” [:ask “What is the capital city of $q.0?”]},
  “1”
  {“ws”
   {“q” “What is the capital of $0?”,
    “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
    “r” :locked},
   “children” {“0” :locked},
-  “act” [:act.command/unlock “r”]}}
+  “act” [:unlock “r”]}}
 ])?",
        "sq" {},
        "r" :locked}})
@@ -527,14 +525,14 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]},
+  “act” [:ask “What is the capital city of $q.0?”]},
  “1”
  {“ws”
   {“q” “What is the capital of $0?”,
    “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
    “r” :locked},
   “children” {“0” :locked},
-  “act” [:act.command/unlock “r”]}}
+  “act” [:unlock “r”]}}
 ])?",
        "sq" {},
        "r" :locked}})
@@ -558,7 +556,7 @@
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:act.command/ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.0?”]}}
 ]?",
        "sq" {},
        "r" :locked}})
@@ -639,14 +637,14 @@
   “0”
   {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
    “children” {},
-   “act” [:act.command/ask “What is the capital city of $q.0?”]}},
+   “act” [:ask “What is the capital city of $q.0?”]}},
  “1”
  {“ws”
   {“q” “What is the capital city of [0: Texas]?”,
    “sq” {},
    “r” :locked},
   “children” {},
-  “act” [:act.command/reply “Austin”]}}
+  “act” [:reply “Austin”]}}
 ]?",
        "sq" {},
        "r"  :locked}})
@@ -688,20 +686,19 @@
                                                        "sq" {},
                                                        "r" :locked},
                                                  "children" {},
-                                                 "act" [:act.command/ask
-                                                        "What is the capital city of $q.0?"]}},
+                                                 "act" [:ask "What is the capital city of $q.0?"]}},
                                   "0" {"ws" {"q" "What is the capital city of $0?",
                                              "sq" {},
                                              "r" :locked},
                                        "children" {},
-                                       "act" [:act.command/unlock "q.0"]},
+                                       "act" [:unlock "q.0"]},
                                   "1" {"ws" {"q" "What is the capital city of [0: Texas]?",
                                              "sq" {},
                                              "r" :locked},
                                        "children" {},
-                                       "act" [:act.command/reply "Austin"]}},
+                                       "act" [:reply "Austin"]}},
                              "1" :locked},
-                 "act" [:act.command/unlock "r.4"]}}}})
+                 "act" [:unlock "r.4"]}}}})
 
 
 ;;;; Scenario: Reflection – sub-question parent – child – parent
@@ -737,15 +734,13 @@
                                                                  "sq" {},
                                                                  "r" :locked},
                                                            "children" {},
-                                                           "act" [:act.command/ask
-                                                                  "What is the capital city of $q.0?"]}},
+                                                           "act" [:ask "What is the capital city of $q.0?"]}},
                                             "0" {"ws" {"q" "What is the capital city of $0?",
                                                        "sq" {},
                                                        "r" :locked},
                                                  "children" {},
                                                  "act" nil}}},
-                           "act" [:act.command/ask
-                                  "Why do you feed your dog whipped cream?"]}}}}})
+                           "act" [:ask "Why do you feed your dog whipped cream?"]}}}}})
 
 
 ;;;; Scenario: Pointer 1
