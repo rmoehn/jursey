@@ -1,6 +1,14 @@
 (use 'jursey.core)
 (require '[cognitect.transcriptor :refer (check!)])
 
+;; TODO tests:
+;; - Pointing to nested hypertext ($sq.0.0).
+;; - Unlocking a grandparent.
+;; - Reachability. Draw a tree and deduce reachability test cases from it.
+;; - Add assertions for the invariants, then run random tests.
+
+;;;; Scenario: Reflection – pass through ask and reply
+
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
@@ -807,11 +815,3 @@
     #{{"q" "How about [0: bla]?",
        "sq" {"0" {"q" "What do you think about $q.0?", "a" "I think [0: bla]."}},
        "r" :locked}})
-
-
-;; TODO tests:
-;; - Asking or replying [with [nested] hypertext].
-;; - Pointing to nested hypertext ($sq.0.0).
-;; - Unlocking a grandparent.
-;; - Reachability. Draw a tree and deduce reachability test cases from it.
-;; - Add assertions for the invariants, then run random tests.
