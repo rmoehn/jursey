@@ -664,6 +664,7 @@
 ;; - For anything that can be part of a pointer string, its key in wsdata has to
 ;;   be the same as in the rendered wsdata.
 ;; - All render- functions must return a string.
+;; TODO: Add checks to make sure that these invariants hold. (RM 2019-02-04)
 
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
@@ -1015,6 +1016,7 @@
     (swap! last-shown-wsid (constantly wsid))
     (render-wsdata (get-wsdata db wsid))))
 
+;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
 (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
   (when trace?
     (pprint/pprint command))
