@@ -31,6 +31,37 @@
 ;; (RM 2019-01-21)
 
 
+;;;; Tools
+(def --Tools)
+
+(defn map-keys-vals [f m]
+  (into {} (map (fn [[k v]]
+                  [(f k) (f v)])
+                m)))
+
+;; TODO: Think about whether this can produce wrong substitutions.
+;; (RM 2018-12-27)
+;; Note: This does (count m) passes. Turn it into a one-pass algorithm if
+;; necessary.
+(defn replace-substrings
+  "Replace occurrences of the keys of `m` in `s` with the corresponding vals."
+  [s m]
+  (reduce-kv string/replace s m))
+
+;; Note: Is this the right approach?
+(defn sgetter [k]
+  (fn [m]
+    (sget m k)))
+
+(defn string-indexed-map
+  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
+  Curved quotation marks substitute for straight ones in this docstring."
+  [f xs]
+  (into {} (map-indexed (fn [i v]
+                          [(str i) (f v)])
+                        xs)))
+
+
 ;;;; Setup
 (def --Setup) ; Workaround for a clearer project structure in IntelliJ.
 
@@ -122,6 +153,23 @@
          [?pws :ws/question]]
        db wsid))
 
+
+;;;; Reflect API
+(def --Reflect-API)
+
+(defn get-reflect-versions
+  "Return versions of reflect entity `id`, ordered from oldest to newest."
+  [db id]
+  (->> (d/q '[:find ?tx ?v
+              :in $ ?r
+              :where
+              [?r :reflect/version ?v]
+              [?v :version/tx ?tx]]
+            db id)
+       (sort-by first)
+       (map second)))
+
+
 ;;;; Version API
 (def --Version-API)
 
@@ -147,24 +195,16 @@
            db next-version-txid))))
 
 
-;;;; Reflect API
-(def --Reflect-API)
+;;;; Hypertext string → transaction data
+(def --Hypertext->txdata)
 
-(defn get-reflect-versions
-  "Return versions of reflect entity `id`, ordered from oldest to newest."
-  [db id]
-  (->> (d/q '[:find ?tx ?v
-              :in $ ?r
-              :where
-              [?r :reflect/version ?v]
-              [?v :version/tx ?tx]]
-            db id)
-       (sort-by first)
-       (map second)))
-
-
-;;;; Hypertext string → transaction map
-(def --Hypertext-parsing)
+;; TODO: Reorganize the code, so that I don't have to put in all these
+;; `declare`s (RM 2019-01-30).
+;; Note: All declarations for this section collected here in order to avoid
+;; duplicates.
+(declare process-httree)
+(declare make-version-txpart)
+(declare make-parent-txpart)
 
 (def pointer-re #"(?xms)
                   \$
@@ -239,14 +279,8 @@
 (spec/def ::parent-path (spec/cat :reflect-path (spec/+ string?)
                                   :_ #{"parent"}))
 
-;; TODO: Reorganize the code, so that I don't have to put in all these
-;; `declare`s (RM 2019-01-30).
-(declare make-parent-txpart)
-
 (defmethod get-target :parent [db wsdata path]
   (make-parent-txpart db wsdata path {:attach? false}))
-
-(declare make-version-txpart)
 
 (defmethod get-target :version [db wsdata path]
   (make-version-txpart db wsdata path {:attach? false}))
@@ -264,25 +298,10 @@
                :pointer/locked? (get-in wsdata (conj path :locked?) true)
                :pointer/target  target}}))
 
-;; Note: Datomic's docs say that it "represents transaction requests as data
-;; structures". That's why I call such a data structure (list of lists or maps)
-;; a "transaction request" and its parts "transaction parts". There are also the
-;; nested data structures that I turn into a transaction request with
-;; datomic-helpers/translate-value. These I call "transaction trees".
-;; TODO: Make the naming more consistent. For example, there is act-txreq,
-;; which never returns a whole txreq, just some txparts (or a txpart?). (RM
-;; 2019-01-21)
-(declare process-httree)
-
 (defn tmp-htid
   "Return a temporary :db/id for the transaction map of a piece of hypertext."
   [loc]
   (str "htid" (string/join \. loc)))
-
-;; Note: Is this the right approach?
-(defn sgetter [k]
-  (fn [m]
-    (sget m k)))
 
 ;; TODO: Document this.
 ;; TODO: Find a better name for wsdata.
@@ -303,6 +322,14 @@
                                                     processed-children))
                  :hypertext/pointer (filter some? (map :pointer processed-children))})}))
 
+;; Note: Datomic's docs say that it "represents transaction requests as data
+;; structures". That's why I call such a data structure (list of lists or maps)
+;; a "transaction request" and its parts "transaction parts". There are also the
+;; nested data structures that I turn into a transaction request with
+;; datomic-helpers/translate-value. These I call "transaction trees".
+;; TODO: Make the naming more consistent. For example, there is act-txreq,
+;; which never returns a whole txreq, just some txparts (or a txpart?). (RM
+;; 2019-01-21)
 (defn process-httree [db wsdata loc [tag & children]]
   "
   `loc` is the location/path of the current element in the syntax tree.
@@ -320,8 +347,8 @@
         (sget :txreq))))
 
 
-;;;; Rendering a workspace as a string
-(def --Hypertext-rendering)
+;;;; Getting and rendering workspace data
+(def --DB->rendered-workspace)
 
 ;; Credits: source of clojure.pprint
 (defmulti hypertext-dispatch class)
@@ -334,23 +361,32 @@
   (pprint/with-pprint-dispatch hypertext-dispatch
     (pprint/write x :stream nil)))
 
-;; TODO: Think about whether this can produce wrong substitutions.
-;; (RM 2018-12-27)
-;; Note: This has (count m) passes. Turn it into a one-pass algorithm if necessary.
-(defn replace-substrings
-  "Replace occurrences of the keys of `m` in `s` with the corresponding vals."
-  [s m]
-  (reduce-kv string/replace s m))
-
-(defn string-indexed-map
-  "[x y z] → {“0” (f x) “1” (f y) “2” (f z)}
-  Curved quotation marks substitute for straight ones in this docstring."
-  [f xs]
-  (into {} (map-indexed (fn [i v]
-                          [(str i) (f v)])
-                        xs)))
-
+(declare get-htdata)
+(declare get-pointer-data)
+(declare get-reflect-data)
 (declare render-reflect-data)
+(declare get-wsdata)
+(declare render-wsdata)
+
+(defn get-htdata [db id]
+  (let [ht (d/pull db '[*] id)]
+    (into {:type    :hypertext
+           :text    (sget ht :hypertext/content)
+           :target  id
+           :locked? false}
+          (map (fn [{pid                :db/id
+                     pname              :pointer/name
+                     {target-id :db/id} :pointer/target
+                     :keys              [pointer/locked?]
+                     :as                p}]
+                 {:pre [(spec/valid? ::pointer p)]}
+                 [pname
+                  (if locked?
+                    {:id      pid
+                     :locked? true
+                     :target  target-id}
+                    (get-pointer-data db pid))])
+               (get ht :hypertext/pointer [])))))
 
 (defn render-htdata [htdata]
   (case (sget htdata :type)
@@ -371,9 +407,6 @@
     (str \newline
          (hypertext-format (render-reflect-data htdata))
          \newline)))
-
-(declare get-htdata)
-(declare get-reflect-data)
 
 (defn get-pointer-data [db id]
   (let [{:keys [pointer/target]} (d/entity db id)]
@@ -399,26 +432,6 @@
 (spec/def ::pointer (spec/keys :req [:pointer/name :pointer/target
                                      :pointer/locked?]))
 
-(defn get-htdata [db id]
-  (let [ht (d/pull db '[*] id)]
-    (into {:type    :hypertext
-           :text    (sget ht :hypertext/content)
-           :target  id
-           :locked? false}
-          (map (fn [{pid                :db/id
-                     pname              :pointer/name
-                     {target-id :db/id} :pointer/target
-                     :keys              [pointer/locked?]
-                     :as                p}]
-                 {:pre [(spec/valid? ::pointer p)]}
-                 [pname
-                  (if locked?
-                    {:id      pid
-                     :locked? true
-                     :target  target-id}
-                    (get-pointer-data db pid))])
-               (get ht :hypertext/pointer [])))))
-
 (defn get-qadata [db
                   {{q-htid :db/id} :qa/question
                    {apid :db/id}   :qa/answer}]
@@ -437,8 +450,6 @@
    "a" (if (sget-in qadata ["a" :locked?])
          :locked
          (render-htdata (sget qadata "a")))})
-
-(declare get-wsdata)
 
 ;; TODO: Make it consistent where (caller/called) and how arguments are
 ;; passed, destructured and verified. See also branch abandoned/ids-to-entities
@@ -473,8 +484,6 @@
                       (string-indexed-map
                         #(get-child-data db version %)
                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
-
-(declare render-wsdata)
 
 (defn render-version-data [{wsdata "ws" children "children"
                             [command act-content :as act] "act"}]
@@ -615,11 +624,6 @@
      :pointer/target  new-target
      :pointer/locked? true}))
 
-(defn map-keys-vals [f m]
-  (into {} (map (fn [[k v]]
-                  [(f k) (f v)])
-                m)))
-
 ;; TODO: Change to Derek's semantics, where each occurrence of the same
 ;; pointer gets its own copy. Implementing this would take half an hour that
 ;; I don't want to take now. (RM 2019-01-07)
@@ -653,7 +657,8 @@
 
 
 ;;;; Core API
-(def --Core-API)
+(def --PUBLIC-Core-API)
+;; Vars in this section are public unless they're marked as private.
 
 ;; Invariants/rules:
 ;; - Never show a waiting workspace to the user (in fact, never call
@@ -669,18 +674,21 @@
 ;; MAYBE TODO: Check before executing a command that the target
 ;; workspace is not waiting for another workspace. (RM 2019-01-08)
 
-(defn wss-to-show
-  "Return IDs of workspaces that are waited for, but not waiting for.
-  Ie. they should and can be worked on. A workspace can be waited for by another
-  workspace, or by an agent if it would answer one of that agent's root
-  questions."
-  [db]
-  (d/q '[:find [?ws ...]
-         :where
-         [_ :ws/waiting-for ?ws]
-         (not [_ :agent/root-ws ?ws])
-         (not [?ws :ws/waiting-for _])]
-       db))
+;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
+;; Note: If it should be used in all command-implementing functions,
+;; shouldn't I just put it in their caller? Or make it a sort of wrapper?
+;; On the one hand that would avoid repetition. On the other hand: Wrappers
+;; can make debugging harder. And currently the only caller is `run`, which is
+;; in a higher layer. I could put a caller in between, but that would be ugly as
+;; well. So for now leave calls to `act-txreq` in the command-implementing
+;; functions.
+(defn- act-txreq [wsid command content]
+  [{:db/id       "actid"
+    :act/command (keyword "act.command" (name command))
+    :act/content content}
+   {:db/id  "datomic.tx"
+    :tx/ws  wsid
+    :tx/act "actid"}])
 
 ;; TODO: Add a check that all pointers in input hypertext point at things that
 ;; exist. (RM 2018-12-28)
@@ -752,22 +760,6 @@
           [{:db/id           pid
             :pointer/locked? false}])]
     txreq))
-
-;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
-;; Note: If it should be used in all command-implementing functions,
-;; shouldn't I just put it in their caller? Or make it a sort of wrapper?
-;; On the one hand that would avoid repetition. On the other hand: Wrappers
-;; can make debugging harder. And currently the only caller is `run`, which is
-;; in a higher layer. I could put a caller in between, but that would be ugly as
-;; well. So for now leave calls to `act-txreq` in the command-implementing
-;; functions.
-(defn act-txreq [wsid command content]
-  [{:db/id       "actid"
-    :act/command (keyword "act.command" (name command))
-    :act/content content}
-   {:db/id  "datomic.tx"
-    :tx/ws  wsid
-    :tx/act "actid"}])
 
 (defn- unlock-reflect [wsid]
   [{:db/id      wsid
@@ -931,7 +923,8 @@
 
 
 ;;;; Single-user runner
-(def --Runner)
+(def --PUBLIC-Runner)
+;; Vars in this section are public unless they're marked as private.
 
 ;; Notes:
 ;; - This is becoming ugly with transacts at all levels. But I think I can
@@ -940,7 +933,20 @@
 ;; - I might have to throw in some derefs to make sure that things are
 ;;   happening in the right order.
 
-(def last-shown-wsid (atom nil))
+(def ^:private last-shown-wsid (atom nil))
+
+(defn- wss-to-show
+  "Return IDs of workspaces that are waited for, but not waiting for.
+  Ie. they should and can be worked on. A workspace can be waited for by another
+  workspace, or by an agent if it would answer one of that agent's root
+  questions."
+  [db]
+  (d/q '[:find [?ws ...]
+         :where
+         [_ :ws/waiting-for ?ws]
+         (not [_ :agent/root-ws ?ws])
+         (not [?ws :ws/waiting-for _])]
+       db))
 
 ;; TODO: Turn this into a function that returns data to be transacted by
 ;; someone else, just like the rest of the core API. (RM 2019-01-10)
@@ -964,6 +970,32 @@
         unlock-txreq
         (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-txreq)))
+
+(defn start-working [conn]
+  (let [db (d/db conn)
+        wsid (first (wss-to-show db))]
+    (swap! last-shown-wsid (constantly wsid))
+    (render-wsdata (get-wsdata db wsid))))
+
+;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
+(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
+  (when trace?
+    (pprint/pprint command))
+  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
+        wsid @last-shown-wsid
+        db (d/db conn)
+        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+
+        _ @(d/transact conn txreq)
+        db (d/db conn)
+        new-wsid (first (wss-to-show db))
+
+        _ (swap! last-shown-wsid (constantly new-wsid))
+
+        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
+    (when trace?
+      (pprint/pprint new-ws))
+    new-ws))
 
 ;; Note: I wanted to do this with Specter, but that was difficult.
 (defn- first-locked-pointer [htdata]
@@ -1010,38 +1042,11 @@
              db agent)]
     (map #(get-root-qa conn %) finished-wsids)))
 
-(defn start-working [conn]
-  (let [db (d/db conn)
-        wsid (first (wss-to-show db))]
-    (swap! last-shown-wsid (constantly wsid))
-    (render-wsdata (get-wsdata db wsid))))
 
-;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
-(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
-  (when trace?
-    (pprint/pprint command))
-  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
-        wsid @last-shown-wsid
-        db (d/db conn)
-        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
-
-        _ @(d/transact conn txreq)
-        db (d/db conn)
-        new-wsid (first (wss-to-show db))
-
-        _ (swap! last-shown-wsid (constantly new-wsid))
-
-        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
-    (when trace?
-      (pprint/pprint new-ws))
-    new-ws))
-
-
-(def --Comment)
+;;;; Development tools
+(def --Development-tools)
 
 (comment
-
-  ;;;; Tools
 
   (rebl/ui)
   (in-ns 'jursey.core)
@@ -1053,6 +1058,15 @@
 
   ;;;; Archive
 
+  ;; Sometimes I make the mistake to refer to a tempid that is not defined
+  ;; anywhere in the transaction. Datomic's error message in that case is
+  ;; uninformative, so this can help to find what I forgot or misspelled.
+  (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
+    (pprint/pprint present-tempids)
+    (pprint/pprint (set (s/transform (s/walker #(contains? present-tempids %))
+                                     (constantly nil)
+                                     trx-data))))
+
   ;; Example of what I'm not going to support. One can't refer to input/path
   ;; pointers, only to output/number pointers. This is not a limitation, because
   ;; input pointers can only refer to something that is already in the workspace.
@@ -1061,20 +1075,5 @@
    "sq" {"0" {"q" "What is the capital city of &q.0?"
               "a" :locked}
          "1" {"q" "What is the population of &sq.0.q.&(q.0)"}}}
-
-  )
-
-(def --Tools)
-
-;; Sometimes I make the mistake to refer to a tempid that is not defined
-;; anywhere in the transaction. Datomic's error message in that case is
-;; uninformative, so this can help to find what I forgot or misspelled.
-(comment
-
-  (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
-    (pprint/pprint present-tempids)
-    (pprint/pprint (set (s/transform (s/walker #(contains? present-tempids %))
-                                     (constantly nil)
-                                     trx-data))))
 
   )
