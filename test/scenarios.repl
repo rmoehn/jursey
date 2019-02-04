@@ -46,7 +46,6 @@
   “act” [:unlock “r”]}}
 ]. Did you forget to write a dollar sign?"}},
      "r" {:max-v 9,
-          "parent" :locked,
           "2" {"ws" {"q" "What is the capital of $0?",
                      "sq" {"0" {"q" "What is the capital city of $q.0?",
                                 "a" "Niniveh"}},
@@ -72,7 +71,6 @@
     #{{"q" "What is the capital of $0?",
        "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked}},
        "r" {:max-v 4,
-            "parent" :locked,
             "1" {"ws" ws1,
                  "children" {},
                  "act" [:ask "What is the capital city of $q.0?"]},
@@ -98,11 +96,10 @@
     #{{"q" "What is the capital of $0?",
        "sq" {"0" {"q" "what is the capital city of $q.0?", "a" "Austin $0"}},
        "r" {:max-v 7,
-            "parent" :locked,
             "3" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "what is the capital city of $q.0?",
                                   "a" "Austin $0"}},
-                       "r" {:max-v 3, "parent" :locked}},
+                       "r" {:max-v 3}},
                  "children" {"0" :locked},
                  "act" [:unlock "r.0"]},
             "1" {"ws" {"q" "What is the capital of $0?",
@@ -170,7 +167,6 @@
     #{{"q" "What is the capital of $0?",
        "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"}},
        "r" {:max-v 6,
-            "parent" :locked,
             "2" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" "Austin"}},
@@ -202,7 +198,6 @@
        "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
              "1" {"q" "Why do you feed your dog whipping cream?", "a" :locked}},
        "r" {:max-v 7,
-            "parent" :locked,
             "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
                  "children" {},
                  "act" [:ask "What is the capital city of $q.0?"]},
@@ -218,7 +213,6 @@
                              "1" {"q" "Why do you feed your dog whipping cream?",
                                   "a" :locked}},
                        "r" {:max-v 6,
-                            "parent" :locked,
                             "0" {"ws" {"q" "What is the capital of $0?",
                                        "sq" {},
                                        "r" :locked},
@@ -257,14 +251,12 @@
        "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked},
              "1" {"q" "How do $r.0 and $r.1.children.0 look to you?",
  "a" "I guess they look just like [0: \n{:max-v 3,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
   “act” [:ask “What is the capital city of $q.0?”]}}
 ] and [1: \n{:max-v 0, “parent” :locked}\n]"}},
        "r" {:max-v 7,
-            "parent" :locked,
             "1" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" :locked}},
@@ -283,7 +275,7 @@
     (run [:unlock "q.0"]))
 
 (check!
-    #{{"q" "Have a look at [0: \n{:max-v 0, “parent” :locked}\n].",
+    #{{"q" "Have a look at [0: \n{:max-v 0}\n].",
        "sq" {},
        "r" :locked}})
 
@@ -329,7 +321,6 @@
 
 (check! #{'(["What is the capital of [1: Texas [1: (USA)]]?"
             "Look at how I looked in the beginning: [0: \n{:max-v 2,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -391,7 +382,6 @@
     #{{"q" "What is the capital of $0?",
        "sq" {"0" {"q" "What is the capital city of $q.0?",
              "a" "I have no idea. I don't like [0: \n{:max-v 0,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -399,7 +389,6 @@
 ]."},
              "1" {"q" "$sq.0.a.0.0 is a curious case, isn't it?",
                   "a" "I don't even want to look at [0: \n{:max-v 0,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -419,7 +408,7 @@
 
 (check!
     #{'(["What is the capital of [1: Texas]?"
-         "[0: Austin [0: Stephen F.]], I saw it in [1: \n{:max-v 2, “parent” :locked}\n]."])})
+         "[0: Austin [0: Stephen F.]], I saw it in [1: \n{:max-v 2}\n]."])})
 
 ;;;; Scenario: Reflection – pass locked parent version
 
@@ -436,7 +425,6 @@
 
 (check!
     #{{"q" "Did I have a good [0: \n{:max-v 0,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -468,11 +456,10 @@
              "1" {"q" "Was the pointer in the question in $r.3.children.0.1 unlocked?",
                   "a" "Yes."}},
        "r" {:max-v 7,
-            "parent" :locked,
             "3" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" "Austin"}},
-                       "r" {:max-v 3, "parent" :locked}},
+                       "r" {:max-v 3}},
                  "children" {"0" {:max-v 1, "parent" :locked}},
                  "act" [:unlock "r.3"]}}}})
 
@@ -491,7 +478,6 @@
 
 (check!
     #{{"q" "How was I in my younger days ([0: \n{:max-v 3,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -521,7 +507,6 @@
 
 (check!
     #{{"q" "How was I in my younger days ([0: \n{:max-v 2,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -552,7 +537,6 @@
 
 (check!
     #{{"q" "Do you think I have a good [0: \n{:max-v 0,
- “parent” :locked,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -577,7 +561,7 @@
 
 (check!
     #{{"q" "How do you like [0: \n{:max-v 0,
- “parent” {:max-v 0, “parent” :locked},
+ “parent” {:max-v 0},
  “0”
  {“ws” {“q” “What is the capital city of $0?”, “sq” {}, “r” :locked},
   “children” {},
@@ -633,7 +617,6 @@
     #{{"q"  "How do you like [0: \n{:max-v 1,
  “parent”
  {:max-v 0,
-  “parent” :locked,
   “0”
   {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
    “children” {},
@@ -672,16 +655,14 @@
        "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
              "1" {"q" "Why do you feed your dog whipped cream?", "a" :locked}},
        "r" {:max-v 10,
-            "parent" :locked,
             "4" {"ws" {"q" "What is the capital of $0?",
                        "sq" {"0" {"q" "What is the capital city of $q.0?",
                                   "a" "Austin"},
                              "1" {"q" "Why do you feed your dog whipped cream?",
                                   "a" :locked}},
-                       "r" {:max-v 4, "parent" :locked}},
+                       "r" {:max-v 4}},
                  "children" {"0" {:max-v 1,
                                   "parent" {:max-v 0,
-                                            "parent" :locked,
                                             "0" {"ws" {"q" "What is the capital of $0?",
                                                        "sq" {},
                                                        "r" :locked},
@@ -722,14 +703,12 @@
        "sq" {},
        "r" {:max-v 7,
             "parent" {:max-v 1,
-                      "parent" :locked,
                       "1" {"ws" {"q" "What is the capital of $0?",
                                  "sq" {"0" {"q" "What is the capital city of $q.0?",
                                             "a" :locked}},
                                  "r" :locked},
                            "children" {"0" {:max-v 0,
                                             "parent" {:max-v 0,
-                                                      "parent" :locked,
                                                       "0" {"ws" {"q" "What is the capital of $0?",
                                                                  "sq" {},
                                                                  "r" :locked},

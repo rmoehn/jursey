@@ -109,6 +109,19 @@
        sort
        vec))
 
+(defn get-ws-parent-wsid
+  "Return the ID of the parent ws of `wsid`.
+  If `wsid` points to a root workspace, return nil."
+  [db wsid]
+  (d/q '[:find ?pws .
+         :in $ ?ws
+         :where
+         [?qa :qa/ws ?ws]
+         [?pws :ws/sub-qa ?qa]
+         ;; Don't include root question pseudo workspaces.
+         [?pws :ws/question]]
+       db wsid))
+
 ;;;; Version API
 (def --Version-API)
 
@@ -207,6 +220,7 @@
 ;; created won't be reachable anymore.
 
 (spec/def ::strnum #(re-matches #"\d+" %))
+;; TODO: Use better namespaces, such as ::jursey.path/child. (RM 2019-02-04)
 (spec/def ::child-path (spec/cat :version-path (spec/+ string?)
                                  :_ #{"children"}
                                  :child ::strnum))
@@ -478,42 +492,52 @@
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
 ;; contain the necessary reflection structures.
-;; TODO: Don't show and do forbid to unlock the parent if it is a root
-;; question's pseudo-workspace. (RM 2019-01-22)
 ;; TODO: Make sure that the :version/tx and :reflect/reachable are
 ;; monotonically decreasing on every branch of the tree. (RM 2019-01-23)
 (defn get-reflect-data [db id]
   (let [{{wsid :db/id}              :reflect/ws
          {parent-reflect-id :db/id} :reflect/parent
          {reachable-txid :db/id}    :reflect/reachable} (d/entity db id)
-        reachable-db (if reachable-txid
-                       (d/as-of db reachable-txid)
-                       db)
-        version-count (count (get-ws-version-txids reachable-db wsid))]
-    (assert wsid)
-    (into {:type    :reflect
-           :target  id
-           "parent" (if parent-reflect-id
-                      (get-reflect-data db parent-reflect-id)
-                      {:locked? true})
-           :max-v   (dec version-count)
-           :locked? false}
-          (->> (get-reflect-versions db id)
-               (map #(let [{:keys [number] :as version-data}
-                           (get-version-data db wsid %)]
-                       [(str number) version-data]))))))
+        _ (assert wsid)
+
+        reachable-db  (if reachable-txid
+                        (d/as-of db reachable-txid)
+                        db)
+        version-count (count (get-ws-version-txids reachable-db wsid))
+        version-data  (->> (get-reflect-versions db id)
+                           (map #(let [{:keys [number] :as version-data}
+                                       (get-version-data db wsid %)]
+                                   [(str number) version-data])))
+        parent-data   (cond (some? parent-reflect-id)
+                            (get-reflect-data db parent-reflect-id)
+
+                            (some? (get-ws-parent-wsid db wsid))
+                            {:locked? true}
+
+                            :else
+                            nil)]
+    (-> {:type    :reflect
+         :target  id
+         :max-v   (dec version-count)
+         :locked? false}
+        (plumbing/assoc-when "parent" parent-data)
+        (into version-data))))
 
 ;; TODO: Maybe I can remove the "data" from the get- and render- functions.
 ;; What they return and accept is obvious from their argument. (RM 2019-01-24)
+;; TODO: The structure of the get- and render- functions is similar. How can I
+;; avoid repetition? (RM 2019-02-04)
 (defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
   (let [rendered-versions (->> reflect-data
                                (filter (fn [[k _]] (re-matches #"\d+" (str k))))
-                               (plumbing/map-vals render-version-data))]
-    (into {:max-v   max-v
-           "parent" (if (sget parent :locked?)
-                      :locked
-                      (render-reflect-data parent))}
-          rendered-versions)))
+                               (plumbing/map-vals render-version-data))
+        rendered-parent (cond (nil? parent)          nil
+                              (sget parent :locked?) :locked
+                              :else
+                              (render-reflect-data parent))]
+    (-> {:max-v max-v}
+        (plumbing/assoc-when "parent" rendered-parent)
+        (into rendered-versions))))
 
 (defn get-wsdata [db id]
   (let [{{qid :db/id} :ws/question
