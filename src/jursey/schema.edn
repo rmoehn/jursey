@@ -47,7 +47,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :qa/answer
- :db/valueType :db.type/ref  ; Either ws hypertext
+ :db/valueType :db.type/ref  ; Either pointer hypertext
  :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
@@ -59,7 +59,7 @@
 ;;;; reflect
 
 {:db/ident :reflect/parent
- :db/valueType :db.type/ref ; reflect
+ :db/valueType :db.type/ref ; Maybe reflect
  :db/isComponent true
  :db/cardinality :db.cardinality/one}
 
@@ -140,7 +140,7 @@
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/target
- :db/valueType :db.type/ref  ; so far: Either hypertext workspace
+ :db/valueType :db.type/ref  ; One of hypertext, workspace, reflect, version
  :db/cardinality :db.cardinality/one}
 
 {:db/ident :pointer/locked?
