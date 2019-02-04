@@ -10,19 +10,45 @@
     (run [:unlock "r"])
     (run [:unlock "r.2"])
     (run [:ask "Did $r.2.children.0 unlock the pointer in its question?"])
-    (run [:unlock "sq.1.a"]))
+    (run [:unlock "sq.1.a"])
+    (run [:unlock "q.0"])
+    (run [:unlock "q.0.0"])
+    (run [:reply "No, it didn't."])
+    (run [:ask "What is the capital city of q.0? Make sure to unlock the pointer."])
+    (run [:unlock "sq.2.a"])
+    (run [:unlock "r"])
+    (run [:reply "There is no pointer. See $r.0. Did you forget to write a dollar sign?"])
+    (run [:unlock "sq.2.a.0"]))
 
-(run [:unlock "q.0"])
-(run [:unlock "q.0.0"])
-(run [:reply "No, it didn't."])
-(run [:ask "What is the capital city of q.0? Make sure to unlock the pointer."])
-(run [:unlock "sq.2.a"])
-(run [:unlock "r"])
-(run [:reply "There is no pointer. See $r.0. Did you forget to write a dollar sign?"])
-(run [:unlock "sq.2.a.0"])
+(check!
+  #{{"q" "What is the capital of $0?",
+     "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Niniveh"},
+           "1" {"q" "Did $r.2.children.0 unlock the pointer in its question?",
+                "a" "No, it didn't."},
+           "2" {"q" "What is the capital city of q.0? Make sure to unlock the pointer.",
+                "a" "There is no pointer. See [0: \n{:max-v 1,
+ “parent” :locked,
+ “0”
+ {“ws”
+  {“q”
+   “What is the capital city of q.0? Make sure to unlock the pointer.”,
+   “sq” {},
+   “r” :locked},
+  “children” {},
+  “act” [:act.command/unlock “r”]}}
+]. Did you forget to write a dollar sign?"}},
+     "r" {:max-v 9,
+          "parent" :locked,
+          "2" {"ws" {"q" "What is the capital of $0?",
+                     "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                "a" "Niniveh"}},
+                     "r" :locked},
+               "children" {"0" :locked},
+               "act" [:act.command/unlock "r"]}}}})
 
-(run [:ask "Give me this pointer unchanged: $sq.2.a.0.0.ws.r"])
-;; Not supported yet.
+;; TODO: When laundering of nested reflection roots is supported, add the
+;; rest of scenarios/07-reflect-ask-reply.edn. (RM 2019-02-04)
+;(run [:ask "Give me this pointer unchanged: $sq.2.a.0.0.ws.r"])
 
 ;;;; Scenario: Reflect earlier reflect
 

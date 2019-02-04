@@ -198,7 +198,7 @@
 
 ;; TODO: This supports only a top-level reflection root. Support deeper
 ;; reflection roots too, for pointer laundering. This is not crucial, because
-;; the user can refer to the same thing by the version.
+;; the user can refer to the same thing by the version. (RM 2019-02-04)
 (defmethod get-target :reflection-root [db {wsid :id} _]
   (let [rid (d/tempid :db.part/user)]
     [rid
