@@ -25,6 +25,16 @@
 ;; ws   … workspace
 ;; wsid … workspce entity ID
 
+;; Invariants/rules:
+;; - Never show a waiting workspace to the user (in fact, never call
+;;   get-wsdata on a waiting workspace).
+;; - Only show a workspace to the user if it is waited for.
+;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
+;;   workspaces have a :ws/question.
+;; - For anything that can be part of a pointer string, its key in wsdata has to
+;;   be the same as in the rendered wsdata.
+;; - All render- functions must return a string.
+;; TODO: Add checks to make sure that these invariants hold. (RM 2019-02-04)
 
 ;; MAYBE TODO: If this ever goes into production, use (d/query … :timeout …).
 ;; Cf. Michael Nygard: Release It!
@@ -63,8 +73,11 @@
 
 
 ;;;; Setup
-(def --Setup) ; Workaround for a clearer project structure in IntelliJ.
+(def --Setup)
+;; These --* vars are not used in the program. They just show up in the file
+;; structure window of IntelliJ, where they serve as section headings.
 
+;; Make these available for auto-completion.
 (declare test-agent)
 (declare conn)
 
@@ -74,7 +87,6 @@
   (let [base-uri "datomic:free://localhost:4334/"
         db-name "jursey"
         db-uri (str base-uri db-name)]
-
     (if-not reset?
       (def conn (d/connect db-uri))
 
@@ -86,16 +98,7 @@
 
           (with-open [rdr (io/reader "src/jursey/schema.edn")]
             @(d/transact conn (datomic.Util/readAll rdr)))
-
           @(d/transact conn [{:agent/handle test-agent}])))))
-
-(comment
-
-  (set-up {:reset? true})
-
-  (set-up {:reset? false})
-
-  )
 
 
 ;;;; Workspace API
@@ -157,6 +160,8 @@
 ;;;; Reflect API
 (def --Reflect-API)
 
+;; TODO: Assert that sorting by :version/number gives the same order as
+;; sorting by :version/tx. (RM 2019-02-05)
 (defn get-reflect-versions
   "Return versions of reflect entity `id`, ordered from oldest to newest."
   [db id]
@@ -173,7 +178,13 @@
 ;;;; Version API
 (def --Version-API)
 
-(defn get-version-act [db id]
+;; Note: The output format doesn't match the rest of the code. Adapt when
+;; necessary. Furthermore, it might be better to create :version/act to avoid
+;; this computation every time a version is shown.
+(defn get-version-act
+  "Return the action that was taken in the specified version.
+  The format is: [<command> <content>]"
+  [db id]
   (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
                                    :in $ ?v
                                    :where
@@ -185,13 +196,13 @@
                                (drop-while #(<= % version-txid))
                                first)]
     (when next-version-txid
-      (d/q '[:find [?command ?content]
+      (d/q '[:find [?cmdident ?content]
              :in $ ?tx
              :where
              [?tx :tx/act ?a]
-             [?a :act/command ?cmdident]
+             [?a :act/command ?cmd]
              [?a :act/content ?content]
-             [?cmdident :db/ident ?command]]
+             [?cmd :db/ident ?cmdident]]
            db next-version-txid))))
 
 
@@ -200,33 +211,11 @@
 
 ;; TODO: Reorganize the code, so that I don't have to put in all these
 ;; `declare`s (RM 2019-01-30).
-;; Note: All declarations for this section collected here in order to avoid
+;; Note: All declarations for this section are collected here in order to avoid
 ;; duplicates.
 (declare process-httree)
 (declare make-version-txpart)
 (declare make-parent-txpart)
-
-(def pointer-re #"(?xms)
-                  \$
-                  (
-                    \w+
-                    (?: [.] \w+ )*
-                  )")
-
-;; TODO: Support escaped brackets and dollar signs.
-(def parse-ht
-  (insta/parser
-    (format
-      "S        = chunks
-       <chunks> = chunk*
-       <chunk>  = text | pointer | embedded
-       text     = #'[^\\[\\]$]+'
-       embedded = <'['> chunks <']'>
-       pointer  = #'%s'"
-      pointer-re)))
-
-(defn ->path [pointer & relative-path]
-  (into (string/split pointer #"\.") relative-path))
 
 ;; TODO: Use the ::*-path specs for identification. (RM 2019-01-30)
 ;; Note: An unlocked reflection structure already has a :target entry. However,
@@ -288,20 +277,18 @@
 (defmethod get-target :hypertext [_ wsdata path]
   [(sget-in wsdata (conj path :target)) nil])
 
-(defn process-pointer [db wsdata dollar-pointer]
-  (let [pointer (apply str (rest dollar-pointer))
+(defn ->path [pointer & relative-path]
+  (into (string/split pointer #"\.") relative-path))
+
+(defn process-pointer [db wsdata $pointer]
+  (let [pointer (subs $pointer 1)
         path (->path pointer)
         [target txreq] (get-target db wsdata path)]
-    {:repr    dollar-pointer
+    {:repr    $pointer
      :txreq   txreq
      :pointer {:pointer/name    pointer
                :pointer/locked? (get-in wsdata (conj path :locked?) true)
                :pointer/target  target}}))
-
-(defn tmp-htid
-  "Return a temporary :db/id for the transaction map of a piece of hypertext."
-  [loc]
-  (str "htid" (string/join \. loc)))
 
 ;; TODO: Document this.
 ;; TODO: Find a better name for wsdata.
@@ -310,17 +297,19 @@
                                           (process-httree db wsdata
                                                           (conj loc i)
                                                           c))
-                                        children)]
+                                        children)
+        htid (str "htid" (string/join \. loc))]
     {:repr    (str \$ (last loc))
      :pointer {:pointer/name    (str (last loc))
-               :pointer/target  (tmp-htid loc)
+               :pointer/target  htid
                :pointer/locked? false}
      :txreq   (conj
                 (apply concat (filter some? (map :txreq processed-children)))
-                {:db/id             (tmp-htid loc)
+                {:db/id             htid
                  :hypertext/content (apply str (map (sgetter :repr)
                                                     processed-children))
-                 :hypertext/pointer (filter some? (map :pointer processed-children))})}))
+                 :hypertext/pointer (filter some? (map :pointer
+                                                       processed-children))})}))
 
 ;; Note: Datomic's docs say that it "represents transaction requests as data
 ;; structures". That's why I call such a data structure (list of lists or maps)
@@ -336,9 +325,29 @@
   'httree' means the syntax tree that results from parsing hypertext."
   (case tag
     ;; :repr is the string that will be included in the parent hypertext.
+    ;; (first children) ↔ There is only one child.
     :text {:repr (first children)}
     :pointer (process-pointer db wsdata (first children))
     :embedded (process-embedded db wsdata loc children)))
+
+(def pointer-re #"(?xms)
+                  \$
+                  (
+                    \w+
+                    (?: [.] \w+ )*
+                  )")
+
+;; TODO: Support escaped brackets and dollar signs.
+(def parse-ht
+  (insta/parser
+    (format
+      "S        = chunks
+       <chunks> = chunk*
+       <chunk>  = text | pointer | embedded
+       text     = #'[^\\[\\]$]+'
+       embedded = <'['> chunks <']'>
+       pointer  = #'%s'"
+      pointer-re)))
 
 (defn ht->txreq [db wsdata ht]
   (let [;; TODO: Fix the grammar so we don't have to turn :S into a fake :embedded.
@@ -349,6 +358,20 @@
 
 ;;;; Getting and rendering workspace data
 (def --DB->rendered-workspace)
+
+;; Note: The functions in this section are all similar in what they do, but they
+;; differ in how they do it. There structure reflects the evolution of my
+;; understanding. In other words, I wrote them willy-nilly. The way to tidy up
+;; would be to refactor the get- and render- functions so that they have the
+;; same structure. Then I could pull out the structure, which would leave the
+;; essence.
+;; TODO: Make it consistent where (caller/called) and how arguments are
+;; passed, destructured and verified. See also branch abandoned/ids-to-entities
+;; (RM 2019-01-22)
+;; TODO: Maybe I can remove the "data" from the get- and render- functions.
+;; What they return and accept is obvious from their argument. (RM 2019-01-24)
+;; TODO: The structure of the get- and render- functions is similar. Avoid
+;; repetition? (RM 2019-02-04)
 
 ;; Credits: source of clojure.pprint
 (defmulti hypertext-dispatch class)
@@ -361,6 +384,9 @@
   (pprint/with-pprint-dispatch hypertext-dispatch
     (pprint/write x :stream nil)))
 
+;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
+;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
+;; with a dash.
 (declare get-htdata)
 (declare get-pointer-data)
 (declare get-reflect-data)
@@ -368,6 +394,7 @@
 (declare get-wsdata)
 (declare render-wsdata)
 
+;; TODO: Use either d/pull or d/entity consistently. (RM 2019-02-05)
 (defn get-htdata [db id]
   (let [ht (d/pull db '[*] id)]
     (into {:type    :hypertext
@@ -388,6 +415,9 @@
                     (get-pointer-data db pid))])
                (get ht :hypertext/pointer [])))))
 
+;; TODO: Extract render-embedded from this. It should return $<pointer>, a
+;; rendered hypertext or a rendered reflect, depending on the embedded data.
+;; (RM 2019-02-05)
 (defn render-htdata [htdata]
   (case (sget htdata :type)
     :hypertext
@@ -451,9 +481,6 @@
          :locked
          (render-htdata (sget qadata "a")))})
 
-;; TODO: Make it consistent where (caller/called) and how arguments are
-;; passed, destructured and verified. See also branch abandoned/ids-to-entities
-;; (RM 2019-01-22)
 (defn get-child-data [db
                       {version-id :db/id}
                       {{sub-wsid :db/id} :qa/ws}]
@@ -495,9 +522,6 @@
    "act"      (when (some? act)
                 [(keyword (name command)) act-content])})
 
-;; Note on naming: qa, ht, ws are abbreviations, so I write qadata, htdata,
-;; wsdata without a dash. "reflect" is a whole word, so I write reflect-data
-;; with a dash.
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
 ;; contain the necessary reflection structures.
@@ -532,10 +556,6 @@
         (plumbing/assoc-when "parent" parent-data)
         (into version-data))))
 
-;; TODO: Maybe I can remove the "data" from the get- and render- functions.
-;; What they return and accept is obvious from their argument. (RM 2019-01-24)
-;; TODO: The structure of the get- and render- functions is similar. How can I
-;; avoid repetition? (RM 2019-02-04)
 (defn render-reflect-data [{parent "parent" max-v :max-v :as reflect-data}]
   (let [rendered-versions (->> reflect-data
                                (filter (fn [[k _]] (re-matches #"\d+" (str k))))
@@ -568,7 +588,7 @@
           (render-reflect-data reflect-data))})
 
 
-;;;; Copying hypertext
+;;;; Hypertext copying
 (def --Hypertext-copying)
 
 (declare get-cp-hypertext-txtree)
@@ -625,8 +645,8 @@
      :pointer/locked? true}))
 
 ;; TODO: Change to Derek's semantics, where each occurrence of the same
-;; pointer gets its own copy. Implementing this would take half an hour that
-;; I don't want to take now. (RM 2019-01-07)
+;; pointer gets its own copy. Implementing this would take an hour that I don't
+;; want to take now. (RM 2019-01-07)
 ;; Note: For now I don't worry about tail recursion and things like that.
 (defn get-cp-hypertext-txtree [db id]
   (let [htdata
@@ -659,20 +679,6 @@
 ;;;; Core API
 (def --PUBLIC-Core-API)
 ;; Vars in this section are public unless they're marked as private.
-
-;; Invariants/rules:
-;; - Never show a waiting workspace to the user (in fact, never call
-;;   get-wsdata on a waiting workspace).
-;; - Only show a workspace to the user if it is waited for.
-;; - Workspaces that :agent/root-ws refers to have no :ws/question. All other
-;;   workspaces have a :ws/question.
-;; - For anything that can be part of a pointer string, its key in wsdata has to
-;;   be the same as in the rendered wsdata.
-;; - All render- functions must return a string.
-;; TODO: Add checks to make sure that these invariants hold. (RM 2019-02-04)
-
-;; MAYBE TODO: Check before executing a command that the target
-;; workspace is not waiting for another workspace. (RM 2019-01-08)
 
 ;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
 ;; Note: If it should be used in all command-implementing functions,
@@ -833,13 +839,13 @@
              attach? (conj {:db/id          reflect-id
                             :reflect/parent rid}))]))
 
-;; TODO: Check that the pointer is actually locked.
+;; TODO: Make sure that the pointer is actually locked.
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (pop path)
 
         txreq
-        ;; MAYBE TODO: Maybe turn this into a multimethod. Cf. get-target. (RM
+        ;; TODO: Maybe turn this into a multimethod. Cf. get-target. (RM
         ;; 2019-01-29)
         (case (target-type db wsdata path)
           :reflection-root
@@ -867,7 +873,8 @@
 ;; workspace, so :pointer/target cannot be a component attribute, so we'd have
 ;; to manually traverse the tree rooted in the workspace and retract all
 ;; hypertexts. This would take at least an hour to implement. Retracting
-;; finished workspaces is not crucial, so don't do it for now. Do it later. (RM
+;; finished workspaces is not crucial, so don't do it for now. Do it later.
+;; Also, I'm not sure how this would get along with reflection. (RM
 ;; 2019-01-08)
 (defn reply [db wsid wsdata answer]
   (let [aht-txreq (ht->txreq db wsdata answer)
@@ -977,6 +984,8 @@
     (swap! last-shown-wsid (constantly wsid))
     (render-wsdata (get-wsdata db wsid))))
 
+;; TODO: Check before executing a command that the target workspace is not
+;; waiting for another workspace. (RM 2019-01-08)
 ;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
 (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
   (when trace?
@@ -1008,10 +1017,10 @@
     (get htdata :locked?)             htdata
     :default                          nil))
 
-;; MAYBE TODO: Change the unlock, so that it goes through the same route as
-;; all other unlocks. Ie. it uses sq.0.a.* instead of the pointer map
-;; directly. For this I'd have to find or write a walker that gives me not
-;; just nodes, but also their paths. (RM 2019-01-10)
+;; MAYBE TODO: Change the unlock, so that it goes through the same route as all
+;; other unlocks. Ie. it uses sq.0.a.* instead of the pointer map directly. For
+;; this I'd have to change first-locked-pointer so that it gives me not just a
+;; pmap, but also its path. (RM 2019-01-10)
 (defn- get-root-qa [conn wsid]
   (let [db-at-start (d/db conn)
         question (-> (get-wsdata db-at-start wsid)
@@ -1069,8 +1078,8 @@
 
   ;; Example of what I'm not going to support. One can't refer to input/path
   ;; pointers, only to output/number pointers. This is not a limitation, because
-  ;; input pointers can only refer to something that is already in the workspace.
-  ;; So one can just refer to that directly.
+  ;; input pointers can only refer to something that is already in the
+  ;; workspace. So one can just refer to that directly.
   {"q"  "What is the capital of $0?"
    "sq" {"0" {"q" "What is the capital city of &q.0?"
               "a" :locked}

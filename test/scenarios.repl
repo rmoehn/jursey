@@ -6,9 +6,11 @@
 ;; - Unlocking a grandparent.
 ;; - Reachability. Draw a tree and deduce reachability test cases from it.
 ;; - Add assertions for the invariants, then run random tests.
+;; - Multiple pointers at the same answer.
+;; - Multiple pointers with the same target in one hypertext.
 ;; - Test several scenarios without reset.
 
-;;;; Scenario: Reflection – pass through ask and reply
+;;;; Scenario: Reflection – pass through ask and reply
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
