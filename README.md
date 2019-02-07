@@ -80,25 +80,6 @@ new one that lacks all the dependencies of the original. I don't know why that
 is. There might be a better way to do this.
 
 
-Use REBL JAR with Leiningen
----------------------------
-
-First download the REBL JAR from http://rebl.cognitect.com/. Then this might
-work: https://github.com/eccentric-j/lein-rebl-example Otherwise:
-
-```
-cd <directory that contains REBL-0.9.109.jar>
-mvn install:install-file \
-    -Dfile=REBL-0.9.109.jar \
-    -DartifactId=REBL \
-    -DgroupId=com.cognitect \
-    -Dversion=0.9.109 \
-    -Dpackaging=jar \
-    -Durl=file:local-mvn \
-    -DpomFile=pom.xml
-```
-
-
 Start the transactor
 --------------------
 

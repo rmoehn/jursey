@@ -4,14 +4,11 @@
             [clojure.spec.alpha :as spec]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
-            [cognitect.rebl :as rebl]
             [cognitect.transcriptor :as transcriptor :refer [check!]]
-            [com.rpl.specter :as s]
             [datomic.api :as d]
             datomic-helpers
             [instaparse.core :as insta]
-            [plumbing.core :as plumbing]
-            [such.imperfection :refer [-pprint-]]]
+            [plumbing.core :as plumbing]]
   [:use [plumbing.core
          :only [safe-get safe-get-in]
          :rename {safe-get sget safe-get-in sget-in}]])
@@ -1057,7 +1054,6 @@
 
 (comment
 
-  (rebl/ui)
   (in-ns 'jursey.core)
   (stacktrace/e)
 
@@ -1066,15 +1062,6 @@
 
 
   ;;;; Archive
-
-  ;; Sometimes I make the mistake to refer to a tempid that is not defined
-  ;; anywhere in the transaction. Datomic's error message in that case is
-  ;; uninformative, so this can help to find what I forgot or misspelled.
-  (let [present-tempids (set (s/transform (s/walker :db/id) :db/id trx-data))]
-    (pprint/pprint present-tempids)
-    (pprint/pprint (set (s/transform (s/walker #(contains? present-tempids %))
-                                     (constantly nil)
-                                     trx-data))))
 
   ;; Example of what I'm not going to support. One can't refer to input/path
   ;; pointers, only to output/number pointers. This is not a limitation, because
