@@ -63,29 +63,6 @@ Limitations
   within eight hours.
 
 
-TODOs
------
-
-Why do I not do them? YAGNI. I only do what will be useful later. If I expected
-end users to use Jursey, I would validate inputs. If I expected to add features
-to the core of Jursey, I would clean up the code more. But I don't expect, so I
-don't do.
-
-Why are there so many? They are insights that I have while programming and might
-not have when I revisit the code weeks later. If one of my YAGNI expectations
-turns out wrong, I will open the file to change something and the TODO will
-remind me to change something else first. This is also the reason why I leave
-them littering the code instead of putting them in an issue tracker.
-
-What about those Notes? When I read other people's code, my first thought is
-often: ‘This is stupid.’ Almost as often I realize a few minutes (or days) later
-that it was I, who was stupid. When I write a piece of code that I fear to cause
-a this-is-stupid thought, I add a note to induce the I-was-stupid response
-quickly. Of course, code that seems stupid is at least slightly stupid. The
-challenge is to find the level of stupidity that gives optimal long-term
-productivity.
-
-
 Branches
 --------
 
@@ -114,6 +91,29 @@ Note:
 - Sometimes I push to `master` directly.
 
 
+TODOs
+-----
+
+Why do I not do them? YAGNI. I only do what will be useful later. If I expected
+end users to use Jursey, I would validate inputs. If I expected to add features
+to the core of Jursey, I would clean up the code more. But I don't expect, so I
+don't do.
+
+Why are there so many? They are insights that I have while programming and might
+not have when I revisit the code weeks later. If one of my YAGNI expectations
+turns out wrong, I will open the file to change something and the TODO will
+remind me to change something else first. This is also the reason why I leave
+them littering the code instead of putting them in an issue tracker.
+
+What about those Notes? When I read other people's code, my first thought is
+often: ‘This is stupid.’ Almost as often I realize a few minutes (or days) later
+that it was I, who was stupid. When I write a piece of code that I fear to cause
+a this-is-stupid thought, I add a note to induce the I-was-stupid response
+quickly. Of course, code that seems stupid is at least slightly stupid. The
+challenge is to find the level of stupidity that gives optimal long-term
+productivity.
+
+
 Design
 ------
 
@@ -125,3 +125,9 @@ References
 ----------
 
 - http://blog.datomic.com/2013/06/component-entities.html
+
+
+License
+-------
+
+See [LICENSE.txt](LICENSE.txt).
