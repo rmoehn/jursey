@@ -1,3 +1,60 @@
+Getting started
+---------------
+
+(This might not work on Windows. If you run into trouble, let me know and we'll
+figure something out.)
+
+[**Install Leiningen**](https://leiningen.org/#install), a build tool for
+Clojure. If you use Homebrew, you can just do `brew install leiningen`.
+
+**Get the code and Datomic**:
+
+```
+$ git clone https://github.com/rmoehn/jursey.git
+$ wget -O datomic-free-0.9.5703.zip https://my.datomic.com/downloads/free/0.9.5703
+$ unzip datomic-free-0.9.5703.zip
+$ mv datomic-free-0.9.5703.zip datomic
+```
+
+**Install the Datomic JAR to your local Maven repo**. Yes, you need Maven.
+
+```
+$ cd datomic
+$ ./bin/maven-install
+```
+
+**Start the Datomic transactor**:
+
+```
+# Still in directory `datomic`.
+$ ./bin/transactor config/samples/free-transactor-template.properties &
+```
+
+I've only gotten the connection between Jursey and the transactor to work with
+when the transactor is run on **Java 8**. If on your machine `java -version`
+prints something about version 11, you have to (temporarily) change your
+`JAVA_HOME`. On my Mac it looks like this:
+
+```
+JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties &
+```
+
+**Start a Clojure REPL**:
+
+```
+$ cd .. # Back to project root.
+$ lein repl
+…
+jursey.core=> (set-up {:reset? true})
+…
+jursey.core=> (run-ask-root-question conn test-agent "What is your name?")
+…
+```
+
+You might get a warning about an illegal access operation. You can ignore it or
+make sure that your `lein` command also runs on Java 8.
+
+
 Limitations
 -----------
 
@@ -55,38 +112,6 @@ Note:
   prototyping.
 
 - Sometimes I push to `master` directly.
-
-
-Use Datomic JAR with Leiningen
-------------------------------
-
-```
-jar xf datomic-free-0.9.5703.jar META-INF/maven/com.datomic/datomic-free/pom.xml
-mvn install:install-file \
-    -Dfile=datomic-free-0.9.5703.jar \
-    -DartifactId=datomic-free \
-    -DgroupId=com.datomic \
-    -Dversion=0.9.5703 \
-    -Dpackaging=jar \
-    -Durl=file:local-mvn -DpomFile=META-INF/maven/com.datomic/datomic-free/pom.xml
-```
-Credits:
-- https://stackoverflow.com/a/9917149/5091738
-- https://github.com/technomancy/leiningen/blob/master/doc/FAQ.md
-- https://groups.google.com/d/msg/datomic/F_NvePmdL4U/lw_IC9ZPAQAJ
-
-If you don't extract and explicitly specify the POM file, Maven will generate a
-new one that lacks all the dependencies of the original. I don't know why that
-is. There might be a better way to do this.
-
-
-Start the transactor
---------------------
-
-```
-cd datomic
-JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties
-```
 
 
 Design
