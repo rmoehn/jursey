@@ -4,13 +4,20 @@ Getting started
 (This might not work on Windows. If you run into trouble, let me know and we'll
 figure something out.)
 
+(You can also skip this section and [run Jursey in a Docker
+container](#Using-a-Docker-container).)
+
 [**Install Leiningen**](https://leiningen.org/#install), a build tool for
 Clojure. If you use Homebrew, you can just do `brew install leiningen`.
 
-**Get the code and Datomic**:
+**Get the code and Datomic**. Note that with downloading Datomic you agree to
+the terms of the [Datomic Free Edition
+License](https://my.datomic.com/datomic-free-edition-license.html), which also
+comes with the zip archive.
 
 ```
 $ git clone https://github.com/rmoehn/jursey.git
+$ cd jursey
 $ wget -O datomic-free-0.9.5703.zip https://my.datomic.com/downloads/free/0.9.5703
 $ unzip datomic-free-0.9.5703.zip
 $ mv datomic-free-0.9.5703.zip datomic
@@ -53,6 +60,25 @@ jursey.core=> (run-ask-root-question conn test-agent "What is your name?")
 
 You might get a warning about an illegal access operation. You can ignore it or
 make sure that your `lein` command also runs on Java 8.
+
+
+Using a Docker container
+------------------------
+
+Note that with running the following commands, you implicitly download Datomic
+Free and thereby agree to the terms of the [Datomic Free Edition
+License)(https://my.datomic.com/datomic-free-edition-license.html).
+
+```
+$ git clone https://github.com/rmoehn/jursey.git
+$ cd jursey
+$ docker build -t jursey . && docker run -ti --rm jursey
+```
+
+This trades leanness and speed for running Jursey with the fewest number of
+commands. I don't know why, but it can take **up to a minute** for the REPL
+prompt to appear. Also, I didn't make the Dockerfile according to best
+practices, so you end up with a > 900 MB image.
 
 
 Limitations
