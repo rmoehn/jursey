@@ -1,0 +1,32 @@
+(use 'jursey.repl-ui)
+(require '[clojure.spec.alpha :as spec]
+         '[cognitect.transcriptor :refer (check!)])
+
+(set-up)
+(ask-root "What is the capital of [Texas]?")
+(start-working)
+(reply "What do I know?")
+
+(get-root-qas)
+(check! (spec/coll-of vector? :min-count 1))
+
+(reset)
+(ask-root "What is the capital of [Texas]?")
+(start-working)
+
+(ask "What is the capital city of $q.0")
+(reply "Should be $sq.0.a.")
+
+(unlock "q.0")
+(reply "Austin")
+
+(get-root-qas)
+
+(check!
+  #{'(["What is the capital of [1: Texas]?"
+       "Should be [0: Austin]."])})
+
+(reset)
+(get-root-qas)
+
+(check! empty?)

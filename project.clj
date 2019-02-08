@@ -9,4 +9,7 @@
                  [datomic-helpers "1.0.0"]
                  [instaparse "1.4.9"]
                  [prismatic/plumbing "0.5.5"]]
+
+  :plugins [[mvxcvi/whidbey "2.0.0"]]
+  :middleware [whidbey.plugin/repl-pprint]
   :repl-options {:init-ns jursey.core})

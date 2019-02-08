@@ -1062,7 +1062,8 @@
   (stacktrace/e)
 
   ;; Don't forget to save test/scenarios.repl!
-  (transcriptor/run "test/scenarios.repl")
+  (do (transcriptor/run "test/scenarios.repl")
+      (transcriptor/run "test/repl_ui.repl"))
 
 
   ;;;; Archive
