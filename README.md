@@ -1,3 +1,18 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+
+- [Getting started](#getting-started)
+- [Using a Docker container](#using-a-docker-container)
+- [Limitations](#limitations)
+- [Branches](#branches)
+- [TODOs](#todos)
+- [Design](#design)
+- [References](#references)
+- [License](#license)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 Getting started
 ---------------
 
@@ -7,59 +22,59 @@ figure something out.)
 (You can also skip this section and [run Jursey in a Docker
 container](#Using-a-Docker-container).)
 
-[**Install Leiningen**](https://leiningen.org/#install), a build tool for
-Clojure. If you use Homebrew, you can just do `brew install leiningen`.
+1. [**Install Leiningen**](https://leiningen.org/#install), a build tool for
+   Clojure. If you use Homebrew, you can just do `brew install leiningen`.
 
-**Get the code and Datomic**. Note that with downloading Datomic you agree to
-the terms of the [Datomic Free Edition
-License](https://my.datomic.com/datomic-free-edition-license.html), which also
-comes with the zip archive.
+2. **Get the code and Datomic**. Note that with downloading Datomic you agree to
+   the terms of the [Datomic Free Edition
+   License](https://my.datomic.com/datomic-free-edition-license.html), which
+   also comes with the zip archive.
 
-```
-$ git clone https://github.com/rmoehn/jursey.git
-$ cd jursey
-$ wget -O datomic-free-0.9.5703.zip https://my.datomic.com/downloads/free/0.9.5703
-$ unzip datomic-free-0.9.5703.zip
-$ mv datomic-free-0.9.5703.zip datomic
-```
+    ```
+    $ git clone https://github.com/rmoehn/jursey.git
+    $ cd jursey
+    $ wget -O datomic-free-0.9.5703.zip https://my.datomic.com/downloads/free/0.9.5703
+    $ unzip datomic-free-0.9.5703.zip
+    $ mv datomic-free-0.9.5703.zip datomic
+    ```
 
-**Install the Datomic JAR to your local Maven repo**. Yes, you need Maven.
+3. **Install the Datomic JAR to your local Maven repo**. Yes, you need Maven.
 
-```
-$ cd datomic
-$ ./bin/maven-install
-```
+    ```
+    $ cd datomic
+    $ ./bin/maven-install
+    ```
 
-**Start the Datomic transactor**:
+4. **Start the Datomic transactor**:
 
-```
-# Still in directory `datomic`.
-$ ./bin/transactor config/samples/free-transactor-template.properties &
-```
+    ```
+    # Still in directory `datomic`.
+    $ ./bin/transactor config/samples/free-transactor-template.properties &
+    ```
 
-I've only gotten the connection between Jursey and the transactor to work with
-when the transactor is run on **Java 8**. If on your machine `java -version`
-prints something about version 11, you have to (temporarily) change your
-`JAVA_HOME`. On my Mac it looks like this:
+   I've only gotten the connection between Jursey and the transactor to work with
+   when the transactor is run on **Java 8**. If on your machine `java -version`
+   prints something about version 11, you have to (temporarily) change your
+   `JAVA_HOME`. On my Mac it looks like this:
 
-```
-JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties &
-```
+   ```
+   JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties &
+   ```
 
-**Start a Clojure REPL**:
+5. **Start a Clojure REPL**:
 
-```
-$ cd .. # Back to project root.
-$ lein repl
-…
-jursey.core=> (set-up {:reset? true})
-…
-jursey.core=> (run-ask-root-question conn test-agent "What is your name?")
-…
-```
+    ```
+    $ cd .. # Back to project root.
+    $ lein repl
+    …
+    jursey.core=> (set-up {:reset? true})
+    …
+    jursey.core=> (run-ask-root-question conn test-agent "What is your name?")
+    …
+    ```
 
-You might get a warning about an illegal access operation. You can ignore it or
-make sure that your `lein` command also runs on Java 8.
+   You might get a warning about an illegal access operation. You can ignore it or
+   make sure that your `lein` command also runs on Java 8.
 
 
 Using a Docker container
@@ -67,7 +82,7 @@ Using a Docker container
 
 Note that with running the following commands, you implicitly download Datomic
 Free and thereby agree to the terms of the [Datomic Free Edition
-License)(https://my.datomic.com/datomic-free-edition-license.html).
+License](https://my.datomic.com/datomic-free-edition-license.html).
 
 ```
 $ git clone https://github.com/rmoehn/jursey.git
