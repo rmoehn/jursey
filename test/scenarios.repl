@@ -776,6 +776,26 @@
          "It is Austin. [0: Clojure/conj] happened there once."])})
 
 
+;;;; Scenario: Auto-unlock
+
+(do (set-up {:reset? true})
+    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+    (start-working conn)
+    (run [:ask "What is the capital city of $q.0?"])
+    (run [:reply "$sq.0.a"])
+
+    (run [:reply "Austin [Keep it weird.]"]))
+
+(check! nil?)
+
+(get-root-qas conn test-agent)
+
+(check!
+    #{'(["What is the capital of [1: Texas]?"
+         "[0: Austin [0: Keep it weird.]]"])})
+
+
 ;;;; Scenario: Pointer laundering
 
 (set-up {:reset? true})

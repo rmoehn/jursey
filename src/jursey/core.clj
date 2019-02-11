@@ -981,28 +981,6 @@
     (swap! last-shown-wsid (constantly wsid))
     (render-wsdata (get-wsdata db wsid))))
 
-;; TODO: Check before executing a command that the target workspace is not
-;; waiting for another workspace. (RM 2019-01-08)
-;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
-(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
-  (when trace?
-    (pprint/pprint command))
-  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
-        wsid @last-shown-wsid
-        db (d/db conn)
-        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
-
-        _ @(d/transact conn txreq)
-        db (d/db conn)
-        new-wsid (first (wss-to-show db))
-
-        _ (swap! last-shown-wsid (constantly new-wsid))
-
-        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
-    (when trace?
-      (pprint/pprint new-ws))
-    new-ws))
-
 ;; Note: I wanted to do this with Specter, but that was difficult.
 (defn- first-locked-pointer [htdata]
   (cond
@@ -1035,18 +1013,44 @@
                 ;; Note that this doesn't create a :tx/act entry.
                 (recur (d/db conn)))))))))
 
-(defn get-root-qas [conn agent]
-  (let [db (d/db conn)
+(defn get-root-qas
+  ([conn]
+   (get-root-qas conn :all-agents))
+  ([conn agent]
+   (let [db             (d/db conn)
+         where-clause   (cond-> '([?a :agent/root-ws ?ws]
+                                  (not [?ws :ws/waiting-for _]))
+                                (not= agent :all-agents)
+                                (conj '[?a :agent/handle ?handle]))
+         query          (assoc '{:find [[?ws ...]]
+                                 :in    [$ ?handle]}
+                          :where where-clause)
+         finished-wsids (d/q query db agent)]
+     (map #(get-root-qa conn %) finished-wsids))))
 
-        finished-wsids
-        (d/q '[:find [?ws ...]
-               :in $ ?handle
-               :where
-               [?a :agent/handle ?handle]
-               [?a :agent/root-ws ?ws]
-               (not [?ws :ws/waiting-for _])]
-             db agent)]
-    (map #(get-root-qa conn %) finished-wsids)))
+;; TODO: Check before executing a command that the target workspace is not
+;; waiting for another workspace. (RM 2019-01-08)
+;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
+(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
+  (when trace?
+    (pprint/pprint command))
+  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
+        wsid @last-shown-wsid
+        db (d/db conn)
+        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+
+        _ @(d/transact conn txreq)
+        ;; Hackily unlock any unfulfilled answer pointer in a root answer.
+        _ (doall (get-root-qas conn))
+        db (d/db conn)
+        new-wsid (first (wss-to-show (d/db conn)))
+
+        _ (swap! last-shown-wsid (constantly new-wsid))
+
+        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
+    (when trace?
+      (pprint/pprint new-ws))
+    new-ws))
 
 
 ;;;; Development tools
