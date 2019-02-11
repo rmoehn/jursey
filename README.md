@@ -58,7 +58,7 @@ container](#Using-a-Docker-container).)
    `JAVA_HOME`. On my Mac it looks like this:
 
    ```
-   JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties &
+   JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_202.jdk/Contents/Home/ bin/transactor config/samples/free-transactor-template.properties &
    ```
 
 5. **Start a Clojure REPL**:
