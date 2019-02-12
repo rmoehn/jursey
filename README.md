@@ -1,6 +1,7 @@
 See also:
 - [Tutorial and command overview](doc/tutorial.md)
 - [Feature demonstration](doc/feature_demo.clj)
+- [Implementation tidbits](doc/implementation.md)
 
 Table of contents:
 
