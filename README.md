@@ -3,7 +3,6 @@ See also:
 - [Feature demonstration](doc/feature_demo.clj)
 - [Implementation tidbits](doc/implementation.md)
 - [Implications for research and possibilities for future work](doc/so-what-what-now.md)
-
 - [Internal and slightly outdated design summary](design.md)
 
 Table of contents:
@@ -62,8 +61,8 @@ container](#Using-a-Docker-container).)
     $ ./bin/transactor config/samples/free-transactor-template.properties &
     ```
 
-   I've only gotten the connection between Jursey and the transactor to work with
-   when the transactor is run on **Java 8**. If on your machine `java -version`
+   I've only gotten the connection between Jursey and the transactor to work
+   when the transactor runs on **Java 8**. If on your machine `java -version`
    prints something about version 11, you have to (temporarily) change your
    `JAVA_HOME`. On my Mac it looks like this:
 
