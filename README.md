@@ -2,6 +2,9 @@ See also:
 - [Tutorial and command overview](doc/tutorial.md)
 - [Feature demonstration](doc/feature_demo.clj)
 - [Implementation tidbits](doc/implementation.md)
+- [Implications for research and possibilities for future work](doc/so-what-what-now.md)
+
+- [Internal and slightly outdated design summary](design.md)
 
 Table of contents:
 
