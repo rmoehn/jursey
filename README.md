@@ -22,6 +22,20 @@ Table of contents:
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
+Limitations
+-----------
+
+Removing the following limitations would only be worthwhile if Jursey was going
+to be used by regular users. So far it looks like this won't be the case.
+
+- Jursey is not (yet?) user-friendly. If your input doesn't follow the rules,
+  the output won't make sense to you. The error messages won't be helpful.
+
+- There is no way to escape special symbols in hypertext. You cannot use any of
+  `[]$` in normal text. This is not a fundamental limitation and could be fixed
+  within eight hours.
+
+
 Getting started
 ---------------
 
@@ -104,13 +118,6 @@ commands. I don't know why, but it can take **up to a minute** for the REPL
 prompt to appear. Also, I didn't make the Dockerfile according to best
 practices, so you end up with a > 900 MB image.
 
-
-Limitations
------------
-
-- There is no way to escape special symbols in hypertext. You cannot use any of
-  `[]$` in normal text. This is not a fundamental limitation and could be fixed
-  within eight hours.
 
 
 Branches

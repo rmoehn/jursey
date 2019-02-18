@@ -25,6 +25,12 @@
   until the answer has been given. Return the next blocking workspace. This
   might be the current workspace if the pointer's target was already present.
 
+  Note that you cannot unlock a reflected pointer in place. What is reflected is
+  supposed to be an unchanged snapshot of the past; you can't change it by
+  unlocking something. If you still want to know what is behind the pointer, you
+  can launder it. See the [feature demo](doc/feature_demo.clj), section
+  ‘Unlocking reflected pointers’.
+
 - `(reply …)` Answer the current workspace's question. Unblock all workspaces
   and root questions that are waiting for the answer. Return the next blocking
   workspace or `nil` if there are none.
@@ -61,8 +67,8 @@ Cider](https://github.com/clojure-emacs/cider).
 
 ## Warning to the unwary visitor
 
-Jursey is not (yet?) user-friendly. If your input doesn't make sense, the output
-won't make sense to you either. The error messages won't be helpful.
+Jursey is not (yet?) user-friendly. If your input doesn't follow the rules, the
+output won't make sense to you. The error messages won't be helpful.
 
 
 ## Ready, set, PENG
