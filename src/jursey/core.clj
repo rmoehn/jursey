@@ -46,14 +46,43 @@
                   [(f k) (f v)])
                 m)))
 
-;; TODO: Think about whether this can produce wrong substitutions.
-;; (RM 2018-12-27)
-;; Note: This does (count m) passes. Turn it into a one-pass algorithm if
-;; necessary.
+(defn compare-count-desc [a b]
+  (compare (count b) (count a)))
+
+(defn split-retaining [re s]
+  (let [m (re-matcher re s)]
+    (loop [segments []
+           prev-end 0]
+      (if (.find m)
+        (let [start (.start m)
+              end   (.end m)
+
+              new-segments
+              (-> segments
+                  (conj (.substring s prev-end start))
+                  (conj (.substring s start end)))]
+          (recur new-segments end))
+        segments))))
+
+;; Note: This is ugly, but it's surprisingly hard to write a compact function
+;; that replaces substrings without replacing a substring of something that has
+;; already been replaced.
 (defn replace-substrings
   "Replace occurrences of the keys of `m` in `s` with the corresponding vals."
   [s m]
-  (reduce-kv string/replace s m))
+  (let [pattern (->> (keys m)
+                     (sort compare-count-desc)
+                     (map #(java.util.regex.Pattern/quote %))
+                     (string/join "|"))
+        chunks (split-retaining (java.util.regex.Pattern/compile pattern) s)]
+    (string/join
+      (map #(get m % %) chunks))))
+
+(comment
+
+  (replace-substrings "bla $r blu $r.2 bli" {"$r" "rsubs" "$r.2" "$r.2"})
+
+  )
 
 ;; Note: Is this the right approach?
 (defn sgetter [k]
@@ -277,8 +306,14 @@
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
+(defn with-$ [pointer]
+  (str \$ pointer))
+
+(defn without-$ [$pointer]
+  (subs $pointer 1))
+
 (defn process-pointer [db wsdata $pointer]
-  (let [pointer (subs $pointer 1)
+  (let [pointer (without-$ $pointer)
         path (->path pointer)
         [target txreq] (get-target db wsdata path)]
     {:repr    $pointer
@@ -289,6 +324,8 @@
 
 ;; TODO: Document this.
 ;; TODO: Find a better name for wsdata.
+;; TODO: Make it so that pointers are numbered 0, 1, 2, … instead of 0, 2, …
+;; or 1, 3, …. Also in get-cp-hypertext-txtree. (RM 2019-02-19)
 (defn process-embedded [db wsdata loc children]
   (let [processed-children (map-indexed (fn [i c]
                                           (process-httree db wsdata
@@ -296,7 +333,7 @@
                                                           c))
                                         children)
         htid (str "htid" (string/join \. loc))]
-    {:repr    (str \$ (last loc))
+    {:repr    (with-$ (last loc))
      :pointer {:pointer/name    (str (last loc))
                :pointer/target  htid
                :pointer/locked? false}
@@ -329,7 +366,7 @@
 
 (def pointer-re #"(?xms)
                   \$
-                  (
+                  (?<pointer>
                     \w+
                     (?: [.] \w+ )*
                   )")
@@ -645,32 +682,95 @@
 ;; pointer gets its own copy. Implementing this would take an hour that I don't
 ;; want to take now. (RM 2019-01-07)
 ;; Note: For now I don't worry about tail recursion and things like that.
+;(defn get-cp-hypertext-txtree [db id]
+;  (let [htdata
+;        (d/pull db '[*] id)
+;
+;        orig->anon-pointer
+;        (into {} (map-indexed (fn [i pmap]
+;                                [(sget pmap :pointer/name) (str i)])
+;                              (get htdata :hypertext/pointer)))
+;
+;        pointer-txtrees
+;        (mapv (fn [pmap]
+;                (->> (sget pmap :pointer/name)
+;                     (sget orig->anon-pointer)
+;                     (get-cp-pointer-txtree db pmap)))
+;              (get htdata :hypertext/pointer []))]
+;    (-> htdata
+;        (dissoc :db/id)
+;        (assoc :hypertext/pointer pointer-txtrees)
+;        (assoc :hypertext/content
+;               (replace-substrings (sget htdata :hypertext/content)
+;                                   (map-keys-vals #(str \$ %) orig->anon-pointer))))))
+
+;; Note: For now I don't worry about tail recursion and things like that.
 (defn get-cp-hypertext-txtree [db id]
-  (let [htdata
+  (let [{:keys [hypertext/content]
+         pmaps :hypertext/pointer
+         :as htdata}
         (d/pull db '[*] id)
 
-        orig->anon-pointer
-        (into {} (map-indexed (fn [i pmap]
-                                [(sget pmap :pointer/name) (str i)])
-                              (get htdata :hypertext/pointer)))
+        origp->pmap
+        (plumbing/map-from-vals (sgetter :pointer/name) pmaps)
 
-        pointer-txtrees
-        (mapv (fn [pmap]
-                (->> (sget pmap :pointer/name)
-                     (sget orig->anon-pointer)
-                     (get-cp-pointer-txtree db pmap)))
-              (get htdata :hypertext/pointer []))]
+        chunk+txtrees
+        (map-indexed (fn [i [tag chunk]]
+                       (case tag
+                         :text [chunk {}]
+                         :pointer [(with-$ (str i))
+                                   (get-cp-pointer-txtree
+                                     db
+                                     (sget origp->pmap (without-$ chunk))
+                                     (str i))]))
+                     (rest (parse-ht content)))] ; Skip first element :S.
     (-> htdata
         (dissoc :db/id)
-        (assoc :hypertext/pointer pointer-txtrees)
-        (assoc :hypertext/content
-               (replace-substrings (sget htdata :hypertext/content)
-                                   (map-keys-vals #(str \$ %) orig->anon-pointer))))))
+        (assoc :hypertext/pointer (->> chunk+txtrees
+                                       (map second)
+                                       (filter seq)
+                                       vec))
+        (assoc :hypertext/content (->> chunk+txtrees
+                                       (map first)
+                                       string/join)))))
 
+
+(comment
+
+  (parse-ht "bla $r bli $r.2 blu")
+
+  (require '[jursey.repl-ui :as r])
+
+  (do
+    (r/reset)
+    (r/ask-root "Approx. how many [Rubik's Cubes] fit in a [Buc-ee's]?")
+    (r/start-working)
+
+    (r/ask "What is the outside volume of $q.1?")
+    (r/ask "What is the inside volume of $q.3?")
+    (r/unlock "r")
+    (r/ask "bla $r blu $r.2 bli")
+    (r/unlock "sq.2.a")
+    (r/unlock "q.1")
+    (r/unlock "q.3")
+
+    ;(unlock "q.0")
+    ;(reply (format "%s cm³" (* 5.7 5.7 5.7)))
+
+    #_(unlock "r.3")
+    #_(unlock "r.3.children.0"))
+
+  (get-wsdata (d/db conn) @last-shown-wsid)
+
+  (base-scenario)
+  )
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
 ;; have control over it (RM 2019-01-04).
 (defn cp-hypertext-txreq [db id]
-  (@#'datomic-helpers/translate-value (get-cp-hypertext-txtree db id)))
+  (doto (@#'datomic-helpers/translate-value (doto (get-cp-hypertext-txtree db
+                                                                         id)
+                                              pprint/pprint))
+    pprint/pprint))
 
 
 ;;;; Core API
