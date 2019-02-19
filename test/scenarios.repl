@@ -15,17 +15,17 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:reply "Niniveh"])
     (run [:unlock "r"])
     (run [:unlock "r.2"])
     (run [:ask "Did $r.2.children.0 unlock the pointer in its question?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.0"])
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.0"])
     (run [:reply "No, it didn't."])
-    (run [:ask "What is the capital city of q.0? Make sure to unlock the pointer."])
+    (run [:ask "What is the capital city of q.1? Make sure to unlock the pointer."])
     (run [:unlock "sq.2.a"])
     (run [:unlock "r"])
     (run [:reply "There is no pointer. See $r.0. Did you forget to write a dollar sign?"])
@@ -33,7 +33,7 @@
 
 (check!
   #{{"q" "What is the capital of $0?",
-     "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Niniveh"},
+     "sq" {"0" {"q" "What is the capital city of $q.1?", "a" "Niniveh"},
            "1" {"q" "Did $r.2.children.0 unlock the pointer in its question?",
                 "a" "No, it didn't."},
            "2" {"q" "What is the capital city of q.0? Make sure to unlock the pointer.",
@@ -50,7 +50,7 @@
 ]. Did you forget to write a dollar sign?"}},
      "r" {:max-v 9,
           "2" {"ws" {"q" "What is the capital of $0?",
-                     "sq" {"0" {"q" "What is the capital city of $q.0?",
+                     "sq" {"0" {"q" "What is the capital city of $q.1?",
                                 "a" "Niniveh"}},
                      "r" :locked},
                "children" {"0" :locked},
@@ -66,17 +66,17 @@
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
     (def ws1 (run [:unlock "r"]))
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (def ws3 (run [:unlock "r.1"]))
     (run [:unlock "r.3"]))
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked}},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" :locked}},
        "r" {:max-v 4,
             "1" {"ws" ws1,
                  "children" {},
-                 "act" [:ask "What is the capital city of $q.0?"]},
+                 "act" [:ask "What is the capital city of $q.1?"]},
             "3" {"ws" ws3,
                  "children" {"0" :locked},
                  "act" [:unlock "r.3"]}}}})
@@ -86,7 +86,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "what is the capital city of $q.0?"])
+    (run [:ask "what is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:reply "Austin [Keep it weird.]"])
     (run [:unlock "r"])
@@ -97,25 +97,25 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "what is the capital city of $q.0?", "a" "Austin $0"}},
+       "sq" {"0" {"q" "what is the capital city of $q.1?", "a" "Austin $0"}},
        "r" {:max-v 7,
             "3" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.1?",
                                   "a" "Austin $0"}},
                        "r" {:max-v 3}},
                  "children" {"0" :locked},
                  "act" [:unlock "r.0"]},
             "1" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.1?",
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
                  "act" [:unlock "sq.0.a"]},
             "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
                  "children" {},
-                 "act" [:ask "what is the capital city of $q.0?"]},
+                 "act" [:ask "what is the capital city of $q.1?"]},
             "2" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "what is the capital city of $q.0?",
+                       "sq" {"0" {"q" "what is the capital city of $q.1?",
                                   "a" "Austin $0"}},
                        "r" :locked},
                  "children" {"0" :locked},
@@ -126,11 +126,11 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
 
-    (run [:unlock "q.0"])
-    (run [:ask "Who was the father of $q.0?"])
+    (run [:unlock "q.1"])
+    (run [:ask "Who was the father of $q.1?"])
     (run [:unlock "sq.0.a"])
 
     (run [:unlock "r"])
@@ -168,10 +168,10 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"}},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" "Austin"}},
        "r" {:max-v 6,
             "2" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" "Austin"}},
                        "r" :locked},
                  "children" {"0" {:max-v 7,
@@ -186,10 +186,10 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipping cream?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Austin"])
     (run [:unlock "r"])
     (run [:unlock "r.0"])
@@ -198,20 +198,20 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" "Austin"},
              "1" {"q" "Why do you feed your dog whipping cream?", "a" :locked}},
        "r" {:max-v 7,
             "0" {"ws" {"q" "What is the capital of $0?", "sq" {}, "r" :locked},
                  "children" {},
-                 "act" [:ask "What is the capital city of $q.0?"]},
+                 "act" [:ask "What is the capital city of $q.1?"]},
             "1" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
                  "act" [:ask "Why do you feed your dog whipping cream?"]},
             "6" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" "Austin"},
                              "1" {"q" "Why do you feed your dog whipping cream?",
                                   "a" :locked}},
@@ -220,9 +220,9 @@
                                        "sq" {},
                                        "r" :locked},
                                  "children" {},
-                                 "act" [:ask "What is the capital city of $q.0?"]},
+                                 "act" [:ask "What is the capital city of $q.1?"]},
                             "1" {"ws" {"q" "What is the capital of $0?",
-                                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                                   "a" :locked}},
                                        "r" :locked},
                                  "children" {"0" :locked},
@@ -235,12 +235,12 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.1"])
     (run [:ask "How do $r.0 and $r.1.children.0 look to you?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:unlock "q.1"])
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
@@ -251,17 +251,17 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" :locked},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" :locked},
              "1" {"q" "How do $r.0 and $r.1.children.0 look to you?",
  "a" "I guess they look just like [0: \n{:max-v 3,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.1?”]}}
 ] and [1: \n{:max-v 0, “parent” :locked}\n]"}},
        "r" {:max-v 7,
             "1" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" :locked}},
                        "r" :locked},
                  "children" {"0" :locked},
@@ -275,7 +275,7 @@
     (run [:ask "Have a look at $r."])
     (run [:ask "Do you have a [dog]?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"]))
+    (run [:unlock "q.1"]))
 
 (check!
     #{{"q" "Have a look at [0: \n{:max-v 0}\n].",
@@ -287,7 +287,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
@@ -298,7 +298,7 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?",
+       "sq" {"0" {"q" "What is the capital city of $q.1?",
                   "a" "[0: What is the capital of [0: Texas]?] looks funny to me."}},
        "r" :locked}})
 
@@ -317,7 +317,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
     (start-working conn)
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:unlock "r"])
     (run [:reply "Look at how I looked in the beginning: $r.0"])
     (get-root-qas conn test-agent))
@@ -335,10 +335,10 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
-    (run [:ask "Do you know $q.0?"])
+    (run [:unlock "q.1"])
+    (run [:ask "Do you know $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.3"])
     (run [:reply "Ask $r.3.children.0."])
@@ -346,13 +346,13 @@
     (run [:unlock "sq.0.a.0.0"])
     (run [:ask "Give me $sq.0.a.0.0.ws.q.0."])
     (run [:unlock "sq.1.a"])
-    (run [:reply "$q.0. You asked for it."])
+    (run [:reply "$q.1. You asked for it."])
     (run [:unlock "sq.1.a.0"])
     (run [:unlock "sq.1.a.0.0"]))
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?",
+       "sq" {"0" {"q" "What is the capital city of $q.1?",
  "a" "Ask [0: \n{:max-v 0,
  “parent” :locked,
  “0”
@@ -369,7 +369,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
@@ -378,24 +378,24 @@
     (run [:unlock "sq.0.a.0.0"])
     (run [:ask "$sq.0.a.0.0 is a curious case, isn't it?"])
     (run [:unlock "sq.1.a"])
-    (run [:reply "I don't even want to look at $q.0."])
+    (run [:reply "I don't even want to look at $q.1."])
     (run [:unlock "sq.1.a.0"]))
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?",
+       "sq" {"0" {"q" "What is the capital city of $q.1?",
              "a" "I have no idea. I don't like [0: \n{:max-v 0,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.1?”]}}
 ]."},
              "1" {"q" "$sq.0.a.0.0 is a curious case, isn't it?",
                   "a" "I don't even want to look at [0: \n{:max-v 0,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.1?”]}}
 ]."}},
        "r" :locked}})
 
@@ -404,7 +404,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:unlock "r"])
     (run [:reply "[Austin [Stephen F.]], I saw it in $r."])
     (get-root-qas conn test-agent))
@@ -418,20 +418,20 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
     (run [:ask "Did I have a good $r.parent.0?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"]))
+    (run [:unlock "q.1"]))
 
 (check!
     #{{"q" "Did I have a good [0: \n{:max-v 0,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.1?”]}}
 ]?",
        "sq" {},
        "r" :locked}})
@@ -441,26 +441,26 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Austin"])
     (run [:unlock "r"])
     (run [:unlock "r.3"])
     (run [:unlock "r.3.children.0"])
     (run [:ask "Was the pointer in the question in $r.3.children.0.1 unlocked?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Yes."]))
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" "Austin"},
              "1" {"q" "Was the pointer in the question in $r.3.children.0.1 unlocked?",
                   "a" "Yes."}},
        "r" {:max-v 7,
             "3" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" "Austin"}},
                        "r" {:max-v 3}},
                  "children" {"0" {:max-v 1, "parent" :locked}},
@@ -471,24 +471,24 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.0"])
     (run [:ask "How was I in my younger days ($r.0)?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.1"]))
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.1"]))
 
 (check!
     #{{"q" "How was I in my younger days ([0: \n{:max-v 3,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]},
+  “act” [:ask “What is the capital city of $q.1?”]},
  “1”
  {“ws”
   {“q” “What is the capital of $0?”,
-   “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
+   “sq” {“0” {“q” “What is the capital city of $q.1?”, “a” :locked}},
    “r” :locked},
   “children” {“0” :locked},
   “act” [:unlock “r”]}}
@@ -501,23 +501,23 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:ask "How was I in my younger days ($r.0)?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.1"]))
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.1"]))
 
 (check!
     #{{"q" "How was I in my younger days ([0: \n{:max-v 2,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]},
+  “act” [:ask “What is the capital city of $q.1?”]},
  “1”
  {“ws”
   {“q” “What is the capital of $0?”,
-   “sq” {“0” {“q” “What is the capital city of $q.0?”, “a” :locked}},
+   “sq” {“0” {“q” “What is the capital city of $q.1?”, “a” :locked}},
    “r” :locked},
   “children” {“0” :locked},
   “act” [:unlock “r”]}}
@@ -530,20 +530,20 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
     (run [:ask "Do you think I have a good $r.parent?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.0"]))
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.0"]))
 
 (check!
     #{{"q" "Do you think I have a good [0: \n{:max-v 0,
  “0”
  {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
   “children” {},
-  “act” [:ask “What is the capital city of $q.0?”]}}
+  “act” [:ask “What is the capital city of $q.1?”]}}
 ]?",
        "sq" {},
        "r" :locked}})
@@ -553,14 +553,14 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.2"])
     (run [:ask "How do you like $r.2.children.0?"])
     (run [:unlock "sq.1.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.0"])
-    (run [:unlock "q.0.parent"]))
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.0"])
+    (run [:unlock "q.1.parent"]))
 
 (check!
     #{{"q" "How do you like [0: \n{:max-v 0,
@@ -580,11 +580,11 @@
     (start-working conn)
     (run [:ask "Can you see anything in $r?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.0"])
-    (run [:ask "Seriously, what is the capital of $q.0.0.ws.q.0?"])
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.0"])
+    (run [:ask "Seriously, what is the capital of $q.1.0.ws.q.0?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Austin!"])
     (run [:reply "$sq.0.a"])
     (run [:unlock "sq.0.a.0"])
@@ -599,10 +599,10 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Austin"])
     (run [:unlock "r"])
     (run [:unlock "r.4"])
@@ -611,10 +611,10 @@
     (run [:unlock "r.4.children.0.1"])
     (run [:ask "How do you like $r.4.children.0?"])
     (run [:unlock "sq.2.a"])
-    (run [:unlock "q.0"])
-    (run [:unlock "q.0.1"])
-    (run [:unlock "q.0.parent"])
-    (run [:unlock "q.0.parent.0"]))
+    (run [:unlock "q.1"])
+    (run [:unlock "q.1.1"])
+    (run [:unlock "q.1.parent"])
+    (run [:unlock "q.1.parent.0"]))
 
 (check!
     #{{"q"  "How do you like [0: \n{:max-v 1,
@@ -623,7 +623,7 @@
   “0”
   {“ws” {“q” “What is the capital of $0?”, “sq” {}, “r” :locked},
    “children” {},
-   “act” [:ask “What is the capital city of $q.0?”]}},
+   “act” [:ask “What is the capital city of $q.1?”]}},
  “1”
  {“ws”
   {“q” “What is the capital city of [0: Texas]?”,
@@ -640,10 +640,10 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.0.a"])
-    (run [:unlock "q.0"])
+    (run [:unlock "q.1"])
     (run [:reply "Austin"])
     (run [:unlock "r"])
     (run [:unlock "r.4"])
@@ -655,11 +655,11 @@
 
 (check!
     #{{"q" "What is the capital of $0?",
-       "sq" {"0" {"q" "What is the capital city of $q.0?", "a" "Austin"},
+       "sq" {"0" {"q" "What is the capital city of $q.1?", "a" "Austin"},
              "1" {"q" "Why do you feed your dog whipped cream?", "a" :locked}},
        "r" {:max-v 10,
             "4" {"ws" {"q" "What is the capital of $0?",
-                       "sq" {"0" {"q" "What is the capital city of $q.0?",
+                       "sq" {"0" {"q" "What is the capital city of $q.1?",
                                   "a" "Austin"},
                              "1" {"q" "Why do you feed your dog whipped cream?",
                                   "a" :locked}},
@@ -670,12 +670,12 @@
                                                        "sq" {},
                                                        "r" :locked},
                                                  "children" {},
-                                                 "act" [:ask "What is the capital city of $q.0?"]}},
+                                                 "act" [:ask "What is the capital city of $q.1?"]}},
                                   "0" {"ws" {"q" "What is the capital city of $0?",
                                              "sq" {},
                                              "r" :locked},
                                        "children" {},
-                                       "act" [:unlock "q.0"]},
+                                       "act" [:unlock "q.1"]},
                                   "1" {"ws" {"q" "What is the capital city of [0: Texas]?",
                                              "sq" {},
                                              "r" :locked},
@@ -690,7 +690,7 @@
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.1.a"])
     (run [:unlock "r"])
@@ -707,7 +707,7 @@
        "r" {:max-v 7,
             "parent" {:max-v 1,
                       "1" {"ws" {"q" "What is the capital of $0?",
-                                 "sq" {"0" {"q" "What is the capital city of $q.0?",
+                                 "sq" {"0" {"q" "What is the capital city of $q.1?",
                                             "a" :locked}},
                                  "r" :locked},
                            "children" {"0" {:max-v 0,
@@ -716,7 +716,7 @@
                                                                  "sq" {},
                                                                  "r" :locked},
                                                            "children" {},
-                                                           "act" [:ask "What is the capital city of $q.0?"]}},
+                                                           "act" [:ask "What is the capital city of $q.1?"]}},
                                             "0" {"ws" {"q" "What is the capital city of $0?",
                                                        "sq" {},
                                                        "r" :locked},
@@ -734,7 +734,7 @@
 (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
 (start-working conn)
-(run [:ask "What is the capital city of $q.0?"])
+(run [:ask "What is the capital city of $q.1?"])
 (run [:reply "Just $sq.0.a."])
 
 (get-root-qas conn test-agent)
@@ -758,10 +758,10 @@
 
 (start-working conn)
 (doseq [command
-        [[:ask "What is the capital city of $q.0?"]
+        [[:ask "What is the capital city of $q.1?"]
          [:ask "What do you think about $sq.0.a?"]
          [:unlock "sq.1.a"]
-         [:unlock "q.0"]
+         [:unlock "q.1"]
          [:reply "Austin"]
          [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
          [:unlock "sq.1.a.0"]
@@ -782,7 +782,7 @@
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
     (start-working conn)
-    (run [:ask "What is the capital city of $q.0?"])
+    (run [:ask "What is the capital city of $q.1?"])
     (run [:reply "$sq.0.a"])
 
     (run [:reply "Austin [Keep it weird.]"]))
@@ -802,13 +802,13 @@
 (run-ask-root-question conn test-agent "How about [bla]?")
 
 (start-working conn)
-(run [:ask "What do you think about $q.0?"])
-(run [:unlock "q.0"])
+(run [:ask "What do you think about $q.1?"])
+(run [:unlock "q.1"])
 (run [:unlock "sq.0.a"])
-(run [:reply "I think $q.0."])
+(run [:reply "I think $q.1."])
 (run [:unlock "sq.0.a.0"])
 
 (check!
     #{{"q" "How about [0: bla]?",
-       "sq" {"0" {"q" "What do you think about $q.0?", "a" "I think [0: bla]."}},
+       "sq" {"0" {"q" "What do you think about $q.1?", "a" "I think [0: bla]."}},
        "r" :locked}})
