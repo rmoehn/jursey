@@ -49,7 +49,7 @@
 (defn compare-count-desc [a b]
   (compare (count b) (count a)))
 
-(defn split-retaining [re s]
+(defn split-retaining [s re]
   (let [m (re-matcher re s)]
     (loop [segments []
            prev-end 0]
@@ -62,7 +62,7 @@
                   (conj (.substring s prev-end start))
                   (conj (.substring s start end)))]
           (recur new-segments end))
-        segments))))
+        (conj segments (.substring s prev-end))))))
 
 ;; Note: This is ugly, but it's surprisingly hard to write a compact function
 ;; that replaces substrings without replacing a substring of something that has
@@ -74,13 +74,16 @@
                      (sort compare-count-desc)
                      (map #(java.util.regex.Pattern/quote %))
                      (string/join "|"))
-        chunks (split-retaining (java.util.regex.Pattern/compile pattern) s)]
+        chunks (split-retaining s (java.util.regex.Pattern/compile pattern))]
     (string/join
       (map #(get m % %) chunks))))
 
 (comment
 
   (replace-substrings "bla $r blu $r.2 bli" {"$r" "rsubs" "$r.2" "$r.2"})
+
+  (replace-substrings "Did $r.2.children.0 unlock the pointer in its question?"
+                      {"$r.2.children.0" "$r.2.children.0"})
 
   )
 
@@ -181,6 +184,19 @@
          ;; Don't include root question pseudo workspaces.
          [?pws :ws/question]]
        db wsid))
+
+
+;;;; wsdata API
+(def --wsdata-API)
+
+(declare render-wsdata)
+(declare hypertext-format)
+
+(defn get-in-wsdata [wsdata path]
+  (or (get-in wsdata path)
+      (throw (ex-info (format "Couldn't find path %s in workspace:\n%s"
+                              path (hypertext-format (render-wsdata wsdata)))
+                      {:wsdata wsdata}))))
 
 
 ;;;; Reflect API
@@ -301,7 +317,7 @@
   (make-version-txpart db wsdata path {:attach? false}))
 
 (defmethod get-target :hypertext [_ wsdata path]
-  [(sget-in wsdata (conj path :target)) nil])
+  [(get-in-wsdata wsdata (conj path :target)) nil])
 
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
@@ -767,10 +783,7 @@
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
 ;; have control over it (RM 2019-01-04).
 (defn cp-hypertext-txreq [db id]
-  (doto (@#'datomic-helpers/translate-value (doto (get-cp-hypertext-txtree db
-                                                                         id)
-                                              pprint/pprint))
-    pprint/pprint))
+  (@#'datomic-helpers/translate-value (get-cp-hypertext-txtree db id)))
 
 
 ;;;; Core API
@@ -960,7 +973,7 @@
                         (get-in wsdata (conj path :wsid)))
 
           :hypertext
-          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer))))]
+          (unlock-by-pmap db wsid (get-in-wsdata wsdata (->path pointer))))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace
