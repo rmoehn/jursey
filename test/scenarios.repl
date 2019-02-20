@@ -1,7 +1,6 @@
 (use 'jursey.core)
-(require '[cognitect.transcriptor :refer (check!)])
-(require 'clojure.data)
-
+(require '[cognitect.transcriptor :refer (check!)]
+         '[jursey.transcriptor-tools :refer [TESTING check-diff!]])
 
 ;; TODO tests:
 ;; - Pointing to nested hypertext ($sq.0.0).
@@ -11,11 +10,6 @@
 ;; - Multiple pointers at the same answer.
 ;; - Multiple pointers with the same target in one hypertext.
 ;; - Test several scenarios without reset.
-
-
-;; Credits: https://stackoverflow.com/a/5947802/5091738
-(defn TESTING [s]
-    (println (str "\033[0;34m" s "\033[0m")))
 
 
 (TESTING "Scenario: Reflection – pass through ask and reply")
@@ -344,24 +338,6 @@
 
 (TESTING "Scenario: Reflection – pass locked child and launder a reflected hypertext pointer")
 
-;; Note: I tried to make it print the line number of its call according to
-;; https://stackoverflow.com/a/10958098/5091738, but it prints the line
-;; number of the transcriptor/run call.
-(defmacro check-diff!
-  ([expected]
-   `(check-diff! ~expected *1))
-  ([expected x]
-   `(let [expected# ~expected
-          x#        ~x]
-      (when-not (= expected# x#)
-        (let [[in-exp# in-x# :as diff#] (clojure.data/diff expected# x#)]
-          (throw (ex-info (format (str "Transcript diff assertion failed!\n"
-                                       "Expected: %s\n"
-                                       "Actual:   %s")
-                                  in-exp#
-                                  in-x#)
-                          {:diff diff#})))))))
-
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
     (start-working conn)
@@ -603,7 +579,7 @@
        "sq" {},
        "r" :locked}})
 
-(TESTING "Scenario: Reflection – pass locked top-level "r"")
+(TESTING "Scenario: Reflection – pass locked top-level “r”")
 
 (do (set-up {:reset? true})
     (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
