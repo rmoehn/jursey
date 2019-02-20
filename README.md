@@ -11,9 +11,9 @@ Table of contents:
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
+- [Limitations](#limitations)
 - [Getting started](#getting-started)
 - [Using a Docker container](#using-a-docker-container)
-- [Limitations](#limitations)
 - [Branches](#branches)
 - [TODOs](#todos)
 - [Design](#design)
