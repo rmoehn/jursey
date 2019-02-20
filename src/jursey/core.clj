@@ -1115,6 +1115,25 @@
    :unlock unlock
    :reply reply})
 
+
+(defn take-action [conn wsid [cmd arg]]
+  (let [cmd-fn (sget cmd->fn cmd)
+        db (d/db conn)
+        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+        _ @(d/transact conn txreq)
+        ;; Hackily unlock any unfulfilled answer pointer in a root answer.
+        _ (doall (get-root-qas conn))]))
+
+(defn automate-ws [db wsid]
+  (let [wsdata (get-wsdata db wsid)
+        wsstr (render-wsdata wsdata)]
+    (get-automatic-action db wsstr)))
+
+(defn automate-wss [db wsids]
+  (->> wsids
+       (map #(automate-ws db %) wsids)
+       (filter some?)))
+
 (defn kick-off
   ([conn] (kick-off conn nil nil))
   ([conn init-wsid init-action]
@@ -1123,12 +1142,7 @@
            wsid init-wsid
            [cmd arg :as action] init-action]
       (when (some? action)
-        (let [cmd-fn (sget cmd->fn cmd)
-              db (d/db conn)
-              txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
-              _ @(d/transact conn txreq)
-              ;; Hackily unlock any unfulfilled answer pointer in a root answer.
-              _ (doall (get-root-qas conn))]))
+        )
       (let [db (d/db conn)
             wsid (first (wss-to-show db))]
         (if (nil? wsid)
