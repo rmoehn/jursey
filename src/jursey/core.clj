@@ -1110,6 +1110,40 @@
     new-ws))
 
 
+(def cmd->fn
+  {:ask ask
+   :unlock unlock
+   :reply reply})
+
+(defn kick-off
+  ([conn] (kick-off conn nil nil))
+  ([conn init-wsid init-action]
+    ;; FIXME Assert (= (some? init-wsid) (some? init-action))
+    (loop [automation-step-count 0
+           wsid init-wsid
+           [cmd arg :as action] init-action]
+      (when (some? action)
+        (let [cmd-fn (sget cmd->fn cmd)
+              db (d/db conn)
+              txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+              _ @(d/transact conn txreq)
+              ;; Hackily unlock any unfulfilled answer pointer in a root answer.
+              _ (doall (get-root-qas conn))]))
+      (let [db (d/db conn)
+            wsid (first (wss-to-show db))]
+        (if (nil? wsid)
+          nil
+          (let [wsdata (get-wsdata db wsid)
+                wsstr (render-wsdata wsdata)]
+            (if-let [action (get-automatic-action db wsstr)]
+              (if (> automation-step-count 1000)
+                (do (println "Automation is taking too many steps.")
+                    [wsid wsstr])
+                (recur (inc automation-step-count)
+                       action))
+              [wsid wsstr])))))))
+
+
 ;;;; Development tools
 (def --Development-tools)
 
