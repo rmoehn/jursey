@@ -100,6 +100,9 @@
                           [(str i) (f v)])
                         xs)))
 
+(defn spprint [x]
+  (pprint/write x :stream nil))
+
 
 ;;;; Setup
 (def --Setup)
@@ -192,10 +195,16 @@
 (declare render-wsdata)
 (declare hypertext-format)
 
+;; TODO: Sometimes the algorithms append stuff to the path that the user
+;; provided. Change things around, so that the error message contains only
+;; the user input and no appendages. (RM 2019-02-20)
+;; Note: spprint instead of hypertext-format would make more sense. But then
+;; it outputs reflected things in hypertext on one line, which is not helpful.
 (defn get-in-wsdata [wsdata path]
   (or (get-in wsdata path)
       (throw (ex-info (format "Couldn't find path %s in workspace:\n%s"
-                              path (hypertext-format (render-wsdata wsdata)))
+                              (string/join "." path)
+                              (hypertext-format (render-wsdata wsdata)))
                       {:wsdata wsdata}))))
 
 
@@ -1178,6 +1187,9 @@
   (do (transcriptor/run "test/scenarios.repl")
       (transcriptor/run "test/repl_ui.repl"))
 
+  (let [x 5] (macroexpand '(my-println (+ x 5))))
+
+  (my-println (+ 5 5))
 
   ;;;; Archive
 
