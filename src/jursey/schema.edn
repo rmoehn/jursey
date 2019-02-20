@@ -146,3 +146,15 @@
 {:db/ident :pointer/locked?
  :db/valueType :db.type/boolean
  :db/cardinality :db.cardinality/one}
+
+;;;; automation
+
+{:db/ident :automation/wsstr
+ :db/valueType :db.type/string
+ :db/cardinality :db.cardinality/one
+ :db/unique :db.unique/identity}
+
+{:db/ident :automation/act
+ :db/valueType :db.type/ref ; act
+ :db/isComponent true
+ :db/cardinality :db.cardinality/one}

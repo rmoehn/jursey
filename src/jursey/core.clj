@@ -89,6 +89,8 @@
                           [(str i) (f v)])
                         xs)))
 
+(defn ident->cmd [cmd-ident]
+  (keyword (name cmd-ident)))
 
 ;;;; Setup
 (def --Setup)
@@ -568,7 +570,7 @@
                                      :locked
                                      (render-reflect-data c))) children)
    "act"      (when (some? act)
-                [(keyword (name command)) act-content])})
+                [(ident->cmd command) act-content])})
 
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
@@ -1109,12 +1111,28 @@
       (pprint/pprint new-ws))
     new-ws))
 
+(defn render-wsid [db id]
+  (render-wsdata (get-wsdata db id)))
+
+;; TODO: Make command/cmd consistent. (RM 2019-02-21)
+;; FIXME: Rename wsstr to something else.
+(defn save-automatic-action [conn wsstr [cmd content]]
+  @(d/transact conn
+               [{:automation/wsstr (str wsstr)
+                 :automation/act   {:act/command (keyword "act.command" (name cmd))
+                                    :act/content content}}]))
+
+(defn get-automatic-action [db wsstr]
+  (let [{{{command-id :db/id} :act/command
+          content             :act/content} :automation/act}
+        (d/pull db '[:automation/act] [:automation/wsstr (str wsstr)])]
+    (when (some? command-id)
+      [(ident->cmd (d/ident db command-id)) content])))
 
 (def cmd->fn
   {:ask ask
    :unlock unlock
    :reply reply})
-
 
 (defn take-action [conn wsid [cmd arg]]
   (let [cmd-fn (sget cmd->fn cmd)
@@ -1124,39 +1142,73 @@
         ;; Hackily unlock any unfulfilled answer pointer in a root answer.
         _ (doall (get-root-qas conn))]))
 
+;; FIXME Rename this and the following function.
 (defn automate-ws [db wsid]
   (let [wsdata (get-wsdata db wsid)
-        wsstr (render-wsdata wsdata)]
-    (get-automatic-action db wsstr)))
+        wsstr (render-wsdata wsdata)
+        action (get-automatic-action db wsstr)]
+    (when (some? action)
+      [wsid action])))
 
 (defn automate-wss [db wsids]
   (->> wsids
-       (map #(automate-ws db %) wsids)
+       (map #(automate-ws db %))
        (filter some?)))
 
 (defn kick-off
   ([conn] (kick-off conn nil nil))
   ([conn init-wsid init-action]
-    ;; FIXME Assert (= (some? init-wsid) (some? init-action))
-    (loop [automation-step-count 0
-           wsid init-wsid
-           [cmd arg :as action] init-action]
-      (when (some? action)
-        )
-      (let [db (d/db conn)
-            wsid (first (wss-to-show db))]
-        (if (nil? wsid)
-          nil
-          (let [wsdata (get-wsdata db wsid)
-                wsstr (render-wsdata wsdata)]
-            (if-let [action (get-automatic-action db wsstr)]
-              (if (> automation-step-count 1000)
-                (do (println "Automation is taking too many steps.")
-                    [wsid wsstr])
-                (recur (inc automation-step-count)
-                       action))
-              [wsid wsstr])))))))
+   {:pre [(= (some? init-wsid) (some? init-action))]}
 
+   (when (some? init-action)
+     (save-automatic-action conn
+                            (render-wsid (d/db conn) init-wsid)
+                            init-action))
+
+   (loop [automation-step-count 0
+          wsid                  init-wsid
+          action                init-action]
+
+     (when (some? action)
+       (take-action conn wsid action))
+
+     (let [db     (d/db conn)
+           wsids  (wss-to-show db)]
+       (if (empty? wsids)
+         nil
+         (let [[wsid action] (first (automate-wss db wsids))]
+           (if (nil? action)
+             [(first wsids) (render-wsid db (first wsids))]
+             (if (> automation-step-count 1000)
+               (do (println "Warning: Automation is taking too many steps.")
+                   [wsid (render-wsid db wsid)])
+               (recur (inc automation-step-count)
+                      wsid
+                      action)))))))))
+
+(comment
+
+  (set-up {:reset? true})
+
+  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+
+  (kick-off conn)
+
+  (kick-off conn (first *1) [:ask "Hulla ho?"])
+  (kick-off conn (first *1) [:ask "Hulla ho?"])
+  (kick-off conn (first *1) [:unlock "sq.0.a"])
+  (kick-off conn (first *1) [:reply "Ho ho hullohu."])
+  (kick-off conn (first *1) [:unlock "sq.1.a"])
+
+  (def output *1)
+
+  (get-automatic-action (d/db conn) (str (second output)))
+
+  (automate-ws (d/db conn) (first output))
+
+  (get-automatic-action (d/db conn) (render-wsid (d/db conn) (first output)))
+
+  )
 
 ;;;; Development tools
 (def --Development-tools)
