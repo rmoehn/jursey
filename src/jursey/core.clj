@@ -41,19 +41,40 @@
 ;;;; Tools
 (def --Tools)
 
-(defn map-keys-vals [f m]
-  (into {} (map (fn [[k v]]
-                  [(f k) (f v)])
-                m)))
+(defn compare-count-desc [a b]
+  (compare (count b) (count a)))
 
-;; TODO: Think about whether this can produce wrong substitutions.
-;; (RM 2018-12-27)
-;; Note: This does (count m) passes. Turn it into a one-pass algorithm if
-;; necessary.
+(defn split-retaining
+  "Like string/split, but include the matches in the output."
+  [s re]
+  (let [m (re-matcher re s)]
+    (loop [segments []
+           prev-end 0]
+      (if (.find m)
+        (let [start (.start m)
+              end   (.end m)
+
+              new-segments
+              (-> segments
+                  (conj (.substring s prev-end start))
+                  (conj (.substring s    start end)))]
+          (recur new-segments end))
+        (conj segments (.substring s prev-end))))))
+
+;; Note: This is ugly, but it's surprisingly hard to write a compact function
+;; that replaces substrings without replacing a substring of something that has
+;; already been replaced.
 (defn replace-substrings
   "Replace occurrences of the keys of `m` in `s` with the corresponding vals."
   [s m]
-  (reduce-kv string/replace s m))
+  (let [joint-pattern (->> (keys m)
+                           (sort compare-count-desc)
+                           (map #(java.util.regex.Pattern/quote %))
+                           (string/join "|")
+                           java.util.regex.Pattern/compile)
+        chunks (split-retaining s joint-pattern)]
+    (string/join
+      (map #(get m % %) chunks))))
 
 ;; Note: Is this the right approach?
 (defn sgetter [k]
@@ -152,6 +173,28 @@
          ;; Don't include root question pseudo workspaces.
          [?pws :ws/question]]
        db wsid))
+
+
+;;;; wsdata API
+(def --wsdata-API)
+
+;; Note: It feels wrong to use render-wsdata here, but it makes error messages
+;; much more helpful.
+(declare render-wsdata)
+(declare hypertext-format)
+
+;; TODO: Sometimes the algorithms append stuff to the path that the user
+;; provided. Change things around, so that the error message contains only
+;; the user input and no appendages. (RM 2019-02-20)
+;; Note: spprint instead of hypertext-format would make more sense. But then
+;; it outputs reflected things in hypertext on one line, which is not helpful.
+(defn get-in-wsdata [wsdata path]
+  (or (get-in wsdata path)
+      (throw (ex-info (format "Couldn't find path %s in workspace:\n%s"
+                              (string/join "." path)
+                              (hypertext-format (render-wsdata wsdata)))
+                      {:wsdata wsdata
+                       :path path}))))
 
 
 ;;;; Reflect API
@@ -272,13 +315,19 @@
   (make-version-txpart db wsdata path {:attach? false}))
 
 (defmethod get-target :hypertext [_ wsdata path]
-  [(sget-in wsdata (conj path :target)) nil])
+  [(get-in-wsdata wsdata (conj path :target)) nil])
 
 (defn ->path [pointer & relative-path]
   (into (string/split pointer #"\.") relative-path))
 
+(defn with-$ [pointer]
+  (str \$ pointer))
+
+(defn without-$ [$pointer]
+  (subs $pointer 1))
+
 (defn process-pointer [db wsdata $pointer]
-  (let [pointer (subs $pointer 1)
+  (let [pointer (without-$ $pointer)
         path (->path pointer)
         [target txreq] (get-target db wsdata path)]
     {:repr    $pointer
@@ -289,6 +338,8 @@
 
 ;; TODO: Document this.
 ;; TODO: Find a better name for wsdata.
+;; TODO: Make it so that pointers are numbered 0, 1, 2, … instead of 0, 2, …
+;; or 1, 3, …. Also in get-cp-hypertext-txtree. (RM 2019-02-19)
 (defn process-embedded [db wsdata loc children]
   (let [processed-children (map-indexed (fn [i c]
                                           (process-httree db wsdata
@@ -296,7 +347,7 @@
                                                           c))
                                         children)
         htid (str "htid" (string/join \. loc))]
-    {:repr    (str \$ (last loc))
+    {:repr    (with-$ (last loc))
      :pointer {:pointer/name    (str (last loc))
                :pointer/target  htid
                :pointer/locked? false}
@@ -641,31 +692,37 @@
      :pointer/target  new-target
      :pointer/locked? true}))
 
-;; TODO: Change to Derek's semantics, where each occurrence of the same
-;; pointer gets its own copy. Implementing this would take an hour that I don't
-;; want to take now. (RM 2019-01-07)
-;; Note: For now I don't worry about tail recursion and things like that.
 (defn get-cp-hypertext-txtree [db id]
-  (let [htdata
+  (let [{:keys [hypertext/content]
+         pmaps :hypertext/pointer
+         :as htdata}
         (d/pull db '[*] id)
+        _ (assert content)
 
-        orig->anon-pointer
-        (into {} (map-indexed (fn [i pmap]
-                                [(sget pmap :pointer/name) (str i)])
-                              (get htdata :hypertext/pointer)))
+        origp->pmap
+        (plumbing/map-from-vals (sgetter :pointer/name) pmaps)
 
-        pointer-txtrees
-        (mapv (fn [pmap]
-                (->> (sget pmap :pointer/name)
-                     (sget orig->anon-pointer)
-                     (get-cp-pointer-txtree db pmap)))
-              (get htdata :hypertext/pointer []))]
+        subcontent+txtrees
+        (->> (parse-ht content)
+             rest ; Skip first element :S.
+             (map-indexed
+               (fn [i [tag chunk]]
+                 (case tag
+                   :text    [chunk {}]
+                   :pointer [(with-$ (str i))
+                             (get-cp-pointer-txtree db
+                                                    (sget origp->pmap (without-$ chunk))
+                                                    (str i))]))))]
     (-> htdata
         (dissoc :db/id)
-        (assoc :hypertext/pointer pointer-txtrees)
-        (assoc :hypertext/content
-               (replace-substrings (sget htdata :hypertext/content)
-                                   (map-keys-vals #(str \$ %) orig->anon-pointer))))))
+        (assoc :hypertext/content (->> subcontent+txtrees
+                                       (map first)
+                                       string/join))
+        (assoc :hypertext/pointer (->> subcontent+txtrees
+                                       (map second)
+                                       (filter seq)
+                                       vec)))))
+
 
 ;; TODO: Pull in the code for datomic-helpers/translate-value, so that I
 ;; have control over it (RM 2019-01-04).
@@ -860,7 +917,7 @@
                         (get-in wsdata (conj path :wsid)))
 
           :hypertext
-          (unlock-by-pmap db wsid (sget-in wsdata (->path pointer))))]
+          (unlock-by-pmap db wsid (get-in-wsdata wsdata (->path pointer))))]
     (concat txreq (act-txreq wsid :unlock pointer))))
 
 ;; MAYBE TODO: When a reply is given, it makes sense to retract the workspace

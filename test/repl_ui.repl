@@ -14,17 +14,17 @@
 (ask-root "What is the capital of [Texas]?")
 (start-working)
 
-(ask "What is the capital city of $q.0")
+(ask "What is the capital city of $q.1")
 (reply "Should be $sq.0.a.")
 
-(unlock "q.0")
+(unlock "q.1")
 (reply "Austin")
 
 (get-root-qas)
 
 (check!
   #{'(["What is the capital of [1: Texas]?"
-       "Should be [0: Austin]."])})
+       "Should be [1: Austin]."])})
 
 (reset)
 (get-root-qas)
