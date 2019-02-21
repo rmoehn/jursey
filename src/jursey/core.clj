@@ -192,7 +192,7 @@
                               (string/join "." path)
                               (hypertext-format (render-wsdata wsdata)))
                       {:wsdata wsdata
-                       :path path}))))
+                       :path   path}))))
 
 
 ;;;; Reflect API
@@ -549,7 +549,8 @@
                         #(get-child-data db version %)
                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
-(defn render-version-data [{wsdata "ws" children "children"
+(defn render-version-data [{wsdata                    "ws"
+                            children                  "children"
                             [cmd act-content :as act] "act"}]
   {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
@@ -687,7 +688,7 @@
 (defn get-cp-hypertext-txtree [db id]
   (let [{:keys [hypertext/content]
          pmaps :hypertext/pointer
-         :as htdata}
+         :as   htdata}
         (d/pull db '[*] id)
         _ (assert content)
 
@@ -783,7 +784,7 @@
             :ws/question qht-copy-tempid}
 
            {:db/id       "actid"
-            :act/cmd :act.cmd/ask
+            :act/cmd     :act.cmd/ask
             :act/content question}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -966,7 +967,7 @@
           unwait-txreq
 
           [{:db/id       "actid"
-            :act/cmd :act.cmd/reply
+            :act/cmd     :act.cmd/reply
             :act/content answer}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -1040,7 +1041,7 @@
                                 (not= agent :all-agents)
                                 (conj '[?a :agent/handle ?handle]))
          query          (assoc '{:find [[?ws ...]]
-                                 :in    [$ ?handle]}
+                                 :in   [$ ?handle]}
                           :where where-clause)
          finished-wsids (d/q query db agent)]
      (map #(get-root-qa conn %) finished-wsids))))
@@ -1048,12 +1049,12 @@
 (defn- save-automatic-act [conn wsmap [cmd content]]
   @(d/transact conn
                [{:automation/wsstr (pr-str wsmap)
-                 :automation/act   {:act/cmd (cmd->ident cmd)
+                 :automation/act   {:act/cmd     (cmd->ident cmd)
                                     :act/content content}}]))
 
 (defn- get-automatic-act [db wsmap]
   (let [{{{cmd-id :db/id} :act/cmd
-          content             :act/content} :automation/act}
+          content         :act/content} :automation/act}
         (d/pull db '[:automation/act] [:automation/wsstr (pr-str wsmap)])]
     (when (some? cmd-id)
       [(ident->cmd (d/ident db cmd-id)) content])))
@@ -1064,9 +1065,9 @@
        (filter (fn [[_ act]] (some? act)))))
 
 (def ^:private cmd->fn
-  {:ask ask
+  {:ask    ask
    :unlock unlock
-   :reply reply})
+   :reply  reply})
 
 (defn- take-act [conn wsid [cmd arg]]
   (let [cmd-fn (sget cmd->fn cmd)
