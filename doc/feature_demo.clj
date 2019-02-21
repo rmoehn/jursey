@@ -4,7 +4,7 @@
 ;; This file contains verbose data structures. Please concentrate on the parts
 ;; indicated by arrows (↑↓) and comments. I hope you won't be too confused.
 ;; If you want to see the intermediate workspaces, please run the commands in
-;; REPL by yourself.
+;; the REPL by yourself.
 
 (defn base-scenario []
   (reset)
