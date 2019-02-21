@@ -97,7 +97,7 @@ Ask a root question:
 (ask-root "What is the capital of [Texas]?")
 ```
 
-After asking a root question, you have to tell Jursey that you want to work on
+After you ask a root question, you have to tell Jursey that you want to work on
 it:
 
 ```

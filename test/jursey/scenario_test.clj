@@ -3,7 +3,7 @@
             [jursey.repl-ui :refer :all]))
 
 (deftest automation-test
-  (testing "Automation in sub-workspaces"
+  (testing "Automation in a sub-workspace"
     (is (= (do (reset)
                (ask-root "What are the capitals of [Texas] and [Alaska]?")
                (start-working)
@@ -18,14 +18,15 @@
                ;; No unlock necessary because of automation.
                (reply "Juneau")
 
-               (reply "The capital of $q.1 is $sq.0.a. The capital of $q.3 is $sq.1.a.")
+               (reply (str "The capital of $q.1 is $sq.0.a."
+                           " The capital of $q.3 is $sq.1.a."))
 
                (get-root-qas))
            (list ["What are the capitals of [1: Texas] and [3: Alaska]?"
                   (str "The capital of [1: Texas] is [3: Austin]."
                        " The capital of [5: Alaska] is [7: Juneau].")]))))
 
-  (testing "Automation for a root question"
+  (testing "Automation of a root answer"
     (is (= (do (reset)
                (ask-root "Are we there yet?")
                (start-working)

@@ -12,9 +12,9 @@
          :rename {safe-get sget safe-get-in sget-in}]])
 ;; Also uses: datomic.Util
 
-;; act  … action
+;; act  … action
 ;; aht  … answer hypertext
-;; cmd  … command
+;; cmd  … command
 ;; ht   … hypertext
 ;; pid  … pointer entity ID
 ;; pmap … pointer map
@@ -22,12 +22,12 @@
 ;; ws   … workspace; in rare cases workspace entity ID
 
 ;; wsid   … workspce entity ID
-;; wsdata … background data for a workspace
-;; wsmap  … workspace data structure that is shown to the user
+;; wsdata … background data for a workspace
+;; wsmap  … workspace data structure that is shown to the user
 ;; wsstr  … stringified wsmap
 ;; (get-wsdata db wsid) → wsdata
-;;         (render-wsdata wsdata) → wsmap
-;;                             (str wsmap) → wsstr
+;;         (render-wsdata wsdata) → wsmap
+;;                          (pr-str wsmap) → wsstr
 
 ;; Invariants/rules:
 ;; - Never show a waiting workspace to the user (in fact, never call
@@ -1047,14 +1047,14 @@
 
 (defn- save-automatic-act [conn wsmap [cmd content]]
   @(d/transact conn
-               [{:automation/wsstr (str wsmap)
+               [{:automation/wsstr (pr-str wsmap)
                  :automation/act   {:act/cmd (cmd->ident cmd)
                                     :act/content content}}]))
 
 (defn- get-automatic-act [db wsmap]
   (let [{{{cmd-id :db/id} :act/cmd
           content             :act/content} :automation/act}
-        (d/pull db '[:automation/act] [:automation/wsstr (str wsmap)])]
+        (d/pull db '[:automation/act] [:automation/wsstr (pr-str wsmap)])]
     (when (some? cmd-id)
       [(ident->cmd (d/ident db cmd-id)) content])))
 
@@ -1076,6 +1076,8 @@
         ;; Hackily unlock any unfulfilled answer pointer in a root answer.
         _ (doall (get-root-qas conn))]))
 
+;; Note: Sorry for the deep nesting. If you draw the following as a flowchart,
+;; it's obvious what is going on.
 (defn automate-where-possible [conn]
   (loop [automation-step-count 0]
     (let [db (d/db conn)
