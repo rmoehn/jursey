@@ -12,13 +12,22 @@
          :rename {safe-get sget safe-get-in sget-in}]])
 ;; Also uses: datomic.Util
 
+;; act  … action
 ;; aht  … answer hypertext
+;; cmd  … command
 ;; ht   … hypertext
 ;; pid  … pointer entity ID
 ;; pmap … pointer map
 ;; qht  … question hypertext
-;; ws   … workspace
-;; wsid … workspce entity ID
+;; ws   … workspace; in rare cases workspace entity ID
+
+;; wsid   … workspce entity ID
+;; wsdata … background data for a workspace
+;; wsmap  … workspace data structure that is shown to the user
+;; wsstr  … stringified wsmap
+;; (get-wsdata db wsid) → wsdata
+;;         (render-wsdata wsdata) → wsmap
+;;                             (str wsmap) → wsstr
 
 ;; Invariants/rules:
 ;; - Never show a waiting workspace to the user (in fact, never call
@@ -89,8 +98,24 @@
                           [(str i) (f v)])
                         xs)))
 
+;;;; Local tools
+(def --Local-tools)
+
+(defn ->path [pointer & relative-path]
+  (into (string/split pointer #"\.") relative-path))
+
+(defn with-$ [pointer]
+  (str \$ pointer))
+
+(defn without-$ [$pointer]
+  (subs $pointer 1))
+
 (defn ident->cmd [cmd-ident]
   (keyword (name cmd-ident)))
+
+(defn cmd->ident [cmd]
+  (keyword "act.cmd" (name cmd)))
+
 
 ;;;; Workspace API
 (def --Workspace-API)
@@ -111,7 +136,7 @@
                         ;; Because ws won't be shown after reply.
                         (not-join [?tx]
                                   [?tx :tx/act ?a]
-                                  [?a :act/command :act.command/reply])]
+                                  [?a :act/cmd :act.cmd/reply])]
                       (d/history db) wsid))
          ;; Txs of all actions that unblocked ws.
          (concat (d/q '[:find [?tx ...]
@@ -196,7 +221,7 @@
 ;; this computation every time a version is shown.
 (defn get-version-act
   "Return the action that was taken in the specified version.
-  The format is: [<command> <content>]"
+  The format is: [<cmd> <content>]"
   [db id]
   (let [[wsid version-txid] (d/q '[:find [?ws ?tx]
                                    :in $ ?v
@@ -213,7 +238,7 @@
              :in $ ?tx
              :where
              [?tx :tx/act ?a]
-             [?a :act/command ?cmd]
+             [?a :act/cmd ?cmd]
              [?a :act/content ?content]
              [?cmd :db/ident ?cmdident]]
            db next-version-txid))))
@@ -289,15 +314,6 @@
 
 (defmethod get-target :hypertext [_ wsdata path]
   [(get-in-wsdata wsdata (conj path :target)) nil])
-
-(defn ->path [pointer & relative-path]
-  (into (string/split pointer #"\.") relative-path))
-
-(defn with-$ [pointer]
-  (str \$ pointer))
-
-(defn without-$ [$pointer]
-  (subs $pointer 1))
 
 (defn process-pointer [db wsdata $pointer]
   (let [pointer (without-$ $pointer)
@@ -534,14 +550,14 @@
                         (get (d/entity db-at-version wsid) :ws/sub-qa)))}))
 
 (defn render-version-data [{wsdata "ws" children "children"
-                            [command act-content :as act] "act"}]
+                            [cmd act-content :as act] "act"}]
   {"ws"       (render-wsdata wsdata)
    "children" (plumbing/map-vals (fn [c]
                                    (if (get c :locked?)
                                      :locked
                                      (render-reflect-data c))) children)
    "act"      (when (some? act)
-                [(ident->cmd command) act-content])})
+                [(ident->cmd cmd) act-content])})
 
 ;; Note on reachability: It is important to pass the
 ;; reachable-db/db-at-version only in specific places, because it might not
@@ -717,9 +733,9 @@
 ;; in a higher layer. I could put a caller in between, but that would be ugly as
 ;; well. So for now leave calls to `act-txreq` in the command-implementing
 ;; functions.
-(defn- act-txreq [wsid command content]
+(defn- act-txreq [wsid cmd content]
   [{:db/id       "actid"
-    :act/command (keyword "act.command" (name command))
+    :act/cmd     (cmd->ident cmd)
     :act/content content}
    {:db/id  "datomic.tx"
     :tx/ws  wsid
@@ -767,7 +783,7 @@
             :ws/question qht-copy-tempid}
 
            {:db/id       "actid"
-            :act/command :act.command/ask
+            :act/cmd :act.cmd/ask
             :act/content question}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -950,7 +966,7 @@
           unwait-txreq
 
           [{:db/id       "actid"
-            :act/command :act.command/reply
+            :act/cmd :act.cmd/reply
             :act/content answer}
            {:db/id  "datomic.tx"
             :tx/ws  wsid
@@ -1054,27 +1070,30 @@
          finished-wsids (d/q query db agent)]
      (map #(get-root-qa conn %) finished-wsids))))
 
-;; TODO: Make command/cmd consistent. Maybe also act/action. (RM 2019-02-21)
-;; FIXME: Rename wsstr to something else.
-(defn- save-automatic-action [conn wsstr [cmd content]]
+(defn- save-automatic-act [conn wsmap [cmd content]]
   @(d/transact conn
-               [{:automation/wsstr (str wsstr)
-                 :automation/act   {:act/command (keyword "act.command" (name cmd))
+               [{:automation/wsstr (str wsmap)
+                 :automation/act   {:act/cmd (cmd->ident cmd)
                                     :act/content content}}]))
 
-(defn- get-automatic-action [db wsstr]
-  (let [{{{command-id :db/id} :act/command
+(defn- get-automatic-act [db wsmap]
+  (let [{{{cmd-id :db/id} :act/cmd
           content             :act/content} :automation/act}
-        (d/pull db '[:automation/act] [:automation/wsstr (str wsstr)])]
-    (when (some? command-id)
-      [(ident->cmd (d/ident db command-id)) content])))
+        (d/pull db '[:automation/act] [:automation/wsstr (str wsmap)])]
+    (when (some? cmd-id)
+      [(ident->cmd (d/ident db cmd-id)) content])))
+
+(defn- automate-wss [db wsids]
+  (->> wsids
+       (map (fn [wsid] [wsid (get-automatic-act db (render-wsid db wsid))]))
+       (filter (fn [[_ act]] (some? act)))))
 
 (def ^:private cmd->fn
   {:ask ask
    :unlock unlock
    :reply reply})
 
-(defn take-action [conn wsid [cmd arg]]
+(defn take-act [conn wsid [cmd arg]]
   (let [cmd-fn (sget cmd->fn cmd)
         db (d/db conn)
         txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
@@ -1082,42 +1101,27 @@
         ;; Hackily unlock any unfulfilled answer pointer in a root answer.
         _ (doall (get-root-qas conn))]))
 
-;; FIXME Rename this and the following function.
-(defn- automate-ws [db wsid]
-  (let [wsdata (get-wsdata db wsid)
-        wsstr (render-wsdata wsdata)
-        action (get-automatic-action db wsstr)]
-    (when (some? action)
-      [wsid action])))
-
-(defn- automate-wss [db wsids]
-  (->> wsids
-       (map #(automate-ws db %))
-       (filter some?)))
-
 (defn automate-where-possible [conn]
   (loop [automation-step-count 0]
     (let [db (d/db conn)
           wsids (wss-to-show db)]
       (if (empty? wsids)
         nil
-        (let [[wsid action] (first (automate-wss db wsids))]
-          (if (nil? action)
+        (let [[wsid act] (first (automate-wss db wsids))]
+          (if (nil? act)
             [(first wsids) (render-wsid db (first wsids))]
             (if (> automation-step-count 1000)
               (do (println "Warning: Automation is taking too many steps.")
                   [wsid (render-wsid db wsid)])
-              (do (take-action conn wsid action)
+              (do (take-act conn wsid act)
                   (recur (inc automation-step-count))))))))))
 
 ;; TODO: Check before executing a command that the target workspace is not
 ;; waiting for another workspace. (RM 2019-01-08)
 ;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
-(defn run [conn wsid action]
-  (save-automatic-action conn
-                         (render-wsid (d/db conn) wsid)
-                         action)
-  (take-action conn wsid action)
+(defn run [conn wsid act]
+  (save-automatic-act conn (render-wsid (d/db conn) wsid) act)
+  (take-act conn wsid act)
   (automate-where-possible conn))
 
 

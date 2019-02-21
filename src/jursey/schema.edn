@@ -1,4 +1,5 @@
 ;; act  … action
+;; cmd  … command
 ;; qa   … question-answer pair
 ;; ws   … workspace
 
@@ -97,7 +98,7 @@
 
 ;;;; act
 
-{:db/ident :act/command
+{:db/ident :act/cmd
  :db/valueType :db.type/ref  ; enum
  :db/cardinality :db.cardinality/one}
 
@@ -105,12 +106,12 @@
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 
-;;;; act.command
+;;;; act.cmd
 
-[:db/add #db/id[:db.part/user] :db/ident :act.command/ask]
-[:db/add #db/id[:db.part/user] :db/ident :act.command/reply]
-[:db/add #db/id[:db.part/user] :db/ident :act.command/unlock]
-[:db/add #db/id[:db.part/user] :db/ident :act.command/reflect]
+[:db/add #db/id[:db.part/user] :db/ident :act.cmd/ask]
+[:db/add #db/id[:db.part/user] :db/ident :act.cmd/reply]
+[:db/add #db/id[:db.part/user] :db/ident :act.cmd/unlock]
+[:db/add #db/id[:db.part/user] :db/ident :act.cmd/reflect]
 
 ;;;; tx
 
