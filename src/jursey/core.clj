@@ -1090,31 +1090,31 @@
 ;; TODO: Check before executing a command that the target workspace is not
 ;; waiting for another workspace. (RM 2019-01-08)
 ;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
-(defn run [[cmd arg :as command] & [{:keys [trace?]}]]
-  (when trace?
-    (pprint/pprint command))
-  (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
-        wsid @last-shown-wsid
-        db (d/db conn)
-        txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
+(comment (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
+   (when trace?
+     (pprint/pprint command))
+   (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
+         wsid @last-shown-wsid
+         db (d/db conn)
+         txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
 
-        _ @(d/transact conn txreq)
-        ;; Hackily unlock any unfulfilled answer pointer in a root answer.
-        _ (doall (get-root-qas conn))
-        db (d/db conn)
-        new-wsid (first (wss-to-show (d/db conn)))
+         _ @(d/transact conn txreq)
+         ;; Hackily unlock any unfulfilled answer pointer in a root answer.
+         _ (doall (get-root-qas conn))
+         db (d/db conn)
+         new-wsid (first (wss-to-show (d/db conn)))
 
-        _ (swap! last-shown-wsid (constantly new-wsid))
+         _ (swap! last-shown-wsid (constantly new-wsid))
 
-        new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
-    (when trace?
-      (pprint/pprint new-ws))
-    new-ws))
+         new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
+     (when trace?
+       (pprint/pprint new-ws))
+     new-ws)))
 
 (defn render-wsid [db id]
   (render-wsdata (get-wsdata db id)))
 
-;; TODO: Make command/cmd consistent. (RM 2019-02-21)
+;; TODO: Make command/cmd consistent. Maybe also act/action. (RM 2019-02-21)
 ;; FIXME: Rename wsstr to something else.
 (defn save-automatic-action [conn wsstr [cmd content]]
   @(d/transact conn
@@ -1155,36 +1155,27 @@
        (map #(automate-ws db %))
        (filter some?)))
 
-(defn kick-off
-  ([conn] (kick-off conn nil nil))
-  ([conn init-wsid init-action]
-   {:pre [(= (some? init-wsid) (some? init-action))]}
+(defn automate-where-possible [conn]
+  (loop [automation-step-count 0]
+    (let [db (d/db conn)
+          wsids (wss-to-show db)]
+      (if (empty? wsids)
+        nil
+        (let [[wsid action] (first (automate-wss db wsids))]
+          (if (nil? action)
+            [(first wsids) (render-wsid db (first wsids))]
+            (if (> automation-step-count 1000)
+              (do (println "Warning: Automation is taking too many steps.")
+                  [wsid (render-wsid db wsid)])
+              (do (take-action conn wsid action)
+                  (recur (inc automation-step-count))))))))))
 
-   (when (some? init-action)
-     (save-automatic-action conn
-                            (render-wsid (d/db conn) init-wsid)
-                            init-action))
-
-   (loop [automation-step-count 0
-          wsid                  init-wsid
-          action                init-action]
-
-     (when (some? action)
-       (take-action conn wsid action))
-
-     (let [db     (d/db conn)
-           wsids  (wss-to-show db)]
-       (if (empty? wsids)
-         nil
-         (let [[wsid action] (first (automate-wss db wsids))]
-           (if (nil? action)
-             [(first wsids) (render-wsid db (first wsids))]
-             (if (> automation-step-count 1000)
-               (do (println "Warning: Automation is taking too many steps.")
-                   [wsid (render-wsid db wsid)])
-               (recur (inc automation-step-count)
-                      wsid
-                      action)))))))))
+(defn run [conn wsid action]
+  (save-automatic-action conn
+                         (render-wsid (d/db conn) wsid)
+                         action)
+  (take-action conn wsid action)
+  (automate-where-possible conn))
 
 (comment
 
@@ -1192,13 +1183,16 @@
 
   (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
 
-  (kick-off conn)
+  (automate-where-possible conn)
 
-  (kick-off conn (first *1) [:ask "Hulla ho?"])
-  (kick-off conn (first *1) [:ask "Hulla ho?"])
-  (kick-off conn (first *1) [:unlock "sq.0.a"])
-  (kick-off conn (first *1) [:reply "Ho ho hullohu."])
-  (kick-off conn (first *1) [:unlock "sq.1.a"])
+  (run conn (first *1) [:ask "Hulla ho?"])
+  (run conn (first *1) [:ask "Hulla ho?"])
+  (run conn (first *1) [:unlock "sq.0.a"])
+  (run conn (first *1) [:reply "Ho ho hullohu."])
+  (run conn (first *1) [:unlock "sq.1.a"])
+  (run conn (first *1) [:reply "It's a secret."])
+
+  (get-root-qas conn)
 
   (def output *1)
 
