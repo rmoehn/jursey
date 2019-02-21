@@ -985,8 +985,6 @@
 ;; - I might have to throw in some derefs to make sure that things are
 ;;   happening in the right order.
 
-;; TODO: Make private vars private in this section. (RM 2019-02-21)
-
 (defn- wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
   Ie. they should and can be worked on. A workspace can be waited for by another
@@ -1070,7 +1068,7 @@
    :unlock unlock
    :reply reply})
 
-(defn take-act [conn wsid [cmd arg]]
+(defn- take-act [conn wsid [cmd arg]]
   (let [cmd-fn (sget cmd->fn cmd)
         db (d/db conn)
         txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
