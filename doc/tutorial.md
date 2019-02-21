@@ -102,23 +102,23 @@ question, you have to tell Jursey that you want to work on it:
 
 ```
 (start-working)
-{"q" "What is the capital of $0?", "r" :locked, "sq" {}}
+{"q" "What is the capital of $1?", "r" :locked, "sq" {}}
 ```
 
 It shows you a workspace for the root question. This contains the question with
 the key `q`, a reflection entry with the key `r` and an empty list of
-sub-questions `sq`. `$0` is a locked pointer. Let's ask a sub-question, passing
+sub-questions `sq`. `$1` is a locked pointer. Let's ask a sub-question, passing
 on this pointer:
 
 ```
-(ask "What is the capital city of $q.0?")
-{"q" "What is the capital of $0?",
+(ask "What is the capital city of $q.1?")
+{"q" "What is the capital of $1?",
  "r" :locked,
- "sq" {"0" {"a" :locked, "q" "What is the capital city of $q.0?"}}}
+ "sq" {"0" {"a" :locked, "q" "What is the capital city of $q.1?"}}}
 ```
 
-You see that the pointer name `0` is local to the question. When you pass it on,
-you have to say: ‘pointer `0` in entry `q`’. The new workspace contains the
+You see that the pointer name `1` is local to the question. When you pass it on,
+you have to say: ‘pointer `1` in entry `q`’. The new workspace contains the
 sub-question you just asked. You can ignore the fact that the `a` entry comes
 before the `q` entry – the data structures you see are arbitrarily ordered.
 
@@ -128,7 +128,7 @@ root question. So let's just reply with it:
 ```
 (reply "It should be $sq.0.a.")
 ; ‘Reply with the answer (a) of subquestion (sq) no. 0.’
-{"q" "What is the capital city of $0?", "r" :locked, "sq" {}}
+{"q" "What is the capital city of $1?", "r" :locked, "sq" {}}
 ```
 
 Now what is this workspace? When Jursey shows a root question answer A to a
@@ -141,7 +141,7 @@ In order to give an answer, we have to see what is hidden behind the pointer.
 Note that you write only the pointer path, not the `$`.
 
 ```
-(unlock "q.0")
+(unlock "q.1")
 {"q" "What is the capital city of [0: Texas]?", "r" :locked, "sq" {}}
 
 (reply "Austin")
@@ -153,7 +153,7 @@ Let's check if there is a root answer.
 
 ```
 (get-root-qas)
-(["What is the capital of [1: Texas]?" "It should be [0: Austin]."])
+(["What is the capital of [1: Texas]?" "It should be [1: Austin]."])
 ```
 
 Done.
