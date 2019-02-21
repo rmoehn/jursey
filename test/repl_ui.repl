@@ -3,7 +3,7 @@
          '[cognitect.transcriptor :refer (check!)])
 
 (set-up)
-(ask-root "What is the capital of [Texas]?")
+(ask-root "Where is the cleanest bathroom in [Los Angeles Airport]?")
 (start-working)
 (reply "What do I know?")
 
