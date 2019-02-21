@@ -22,6 +22,17 @@ Table of contents:
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
+Jursey
+======
+
+A question-answering system modeled after
+[Patchwork](https://github.com/oughtinc/patchwork). Differences:
+- Support of [reflection](doc/feature_demo.clj).
+- Pointer copying like in
+  [Affable](https://github.com/oughtinc/affable/tree/a4f53b09bd09bb769801e21775f2e13e3cb23cab#interactions).
+- Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
+
+
 Limitations
 -----------
 
