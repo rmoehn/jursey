@@ -27,8 +27,8 @@ Jursey
 
 A question-answering system modeled after
 [Patchwork](https://github.com/oughtinc/patchwork). Differences:
-- Support of [reflection](doc/feature_demo.clj).
-- Pointer copying like in
+- Supports [reflection](doc/feature_demo.clj).
+- Copies and renumbers pointers to the same thing like
   [Affable](https://github.com/oughtinc/affable/tree/a4f53b09bd09bb769801e21775f2e13e3cb23cab#interactions).
 - Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
 
