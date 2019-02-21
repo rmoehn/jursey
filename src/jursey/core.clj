@@ -1000,29 +1000,6 @@
          (not [?ws :ws/waiting-for _])]
        db))
 
-;; TODO: Turn this into a function that returns data to be transacted by
-;; someone else, just like the rest of the core API. (RM 2019-01-10)
-;; Note: This frames the root question as the sub-question of a workspace
-;; without own question. Thus we can handle it almost like any other question.
-(defn run-ask-root-question [conn agent question]
-  (let [ask-txreq
-        (concat
-          (ask (d/db conn) "wsid" {} question)
-
-          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
-           {:db/id         [:agent/handle agent]
-            :agent/root-ws "wsid"}])
-
-        {:keys [db-after tempids]}
-        @(d/transact conn ask-txreq)
-
-        wsid (d/resolve-tempid db-after tempids "wsid")
-
-        ;; Kick off processing by unlocking the answer to this root question.
-        unlock-txreq
-        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
-    (d/transact conn unlock-txreq)))
-
 ;; Note: I wanted to do this with Specter, but that was difficult.
 (defn- first-locked-pointer [htdata]
   (cond
@@ -1115,6 +1092,31 @@
                   [wsid (render-wsid db wsid)])
               (do (take-act conn wsid act)
                   (recur (inc automation-step-count))))))))))
+
+;; TODO: Turn this into a function that returns data to be transacted by
+;; someone else, just like the rest of the core API. (RM 2019-01-10)
+;; Note: This frames the root question as the sub-question of a workspace
+;; without own question. Thus we can handle it almost like any other question.
+(defn run-ask-root-question [conn agent question]
+  (let [ask-txreq
+        (concat
+          (ask (d/db conn) "wsid" {} question)
+
+          [{:db/id "wsid"} ; Empty ws that just gets a qa from `ask`.
+           {:db/id         [:agent/handle agent]
+            :agent/root-ws "wsid"}])
+
+        {:keys [db-after tempids]}
+        @(d/transact conn ask-txreq)
+
+        wsid (d/resolve-tempid db-after tempids "wsid")
+
+        ;; Kick off processing by unlocking the answer to this root question.
+        unlock-txreq
+        (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
+    @(d/transact conn unlock-txreq)
+    (automate-where-possible conn))
+  nil)
 
 ;; TODO: Check before executing a command that the target workspace is not
 ;; waiting for another workspace. (RM 2019-01-08)
