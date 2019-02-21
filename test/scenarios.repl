@@ -242,7 +242,7 @@
     (run [:ask "How do $r.0 and $r.1.children.0 look to you?"])
     (run [:unlock "sq.1.a"])
     (run [:unlock "q.1"])
-    (run [:unlock "q.1"])
+    (run [:unlock "q.3"])
     (run [:unlock "r"])
     (run [:unlock "r.parent"])
     (run [:unlock "r.parent.2"])
