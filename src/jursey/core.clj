@@ -996,8 +996,6 @@
 ;; - I might have to throw in some derefs to make sure that things are
 ;;   happening in the right order.
 
-(def ^:private last-shown-wsid (atom nil))
-
 (defn- wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
   Ie. they should and can be worked on. A workspace can be waited for by another
@@ -1033,12 +1031,6 @@
         unlock-txreq
         (unlock db-after wsid (get-wsdata db-after wsid) "sq.0.a")]
     (d/transact conn unlock-txreq)))
-
-(defn start-working [conn]
-  (let [db (d/db conn)
-        wsid (first (wss-to-show db))]
-    (swap! last-shown-wsid (constantly wsid))
-    (render-wsdata (get-wsdata db wsid))))
 
 ;; Note: I wanted to do this with Specter, but that was difficult.
 (defn- first-locked-pointer [htdata]
@@ -1086,30 +1078,6 @@
                           :where where-clause)
          finished-wsids (d/q query db agent)]
      (map #(get-root-qa conn %) finished-wsids))))
-
-;; TODO: Check before executing a command that the target workspace is not
-;; waiting for another workspace. (RM 2019-01-08)
-;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
-(comment (defn run [[cmd arg :as command] & [{:keys [trace?]}]]
-   (when trace?
-     (pprint/pprint command))
-   (let [cmd-fn (sget {:ask ask :unlock unlock :reply reply} cmd)
-         wsid @last-shown-wsid
-         db (d/db conn)
-         txreq (cmd-fn db wsid (get-wsdata db wsid) arg)
-
-         _ @(d/transact conn txreq)
-         ;; Hackily unlock any unfulfilled answer pointer in a root answer.
-         _ (doall (get-root-qas conn))
-         db (d/db conn)
-         new-wsid (first (wss-to-show (d/db conn)))
-
-         _ (swap! last-shown-wsid (constantly new-wsid))
-
-         new-ws (when new-wsid (render-wsdata (get-wsdata db new-wsid)))]
-     (when trace?
-       (pprint/pprint new-ws))
-     new-ws)))
 
 (defn render-wsid [db id]
   (render-wsdata (get-wsdata db id)))
@@ -1170,6 +1138,9 @@
               (do (take-action conn wsid action)
                   (recur (inc automation-step-count))))))))))
 
+;; TODO: Check before executing a command that the target workspace is not
+;; waiting for another workspace. (RM 2019-01-08)
+;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
 (defn run [conn wsid action]
   (save-automatic-action conn
                          (render-wsid (d/db conn) wsid)
@@ -1194,13 +1165,7 @@
 
   (get-root-qas conn)
 
-  (def output *1)
-
-  (get-automatic-action (d/db conn) (str (second output)))
-
-  (automate-ws (d/db conn) (first output))
-
-  (get-automatic-action (d/db conn) (render-wsid (d/db conn) (first output)))
+  (in-ns 'jursey.repl-ui)
 
   )
 
