@@ -1,4 +1,4 @@
-(use 'jursey.core)
+(use 'jursey.repl-ui)
 (require '[cognitect.transcriptor :refer (check!)]
          '[jursey.transcriptor-tools :refer [TESTING check-diff!]])
 
@@ -13,9 +13,9 @@
 
 (TESTING "Scenario: Reflection – pass through ask and reply")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:reply "Niniveh"])
@@ -63,9 +63,9 @@
 
 (TESTING "Scenario: Reflect earlier reflect")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (def ws1 (run [:unlock "r"]))
     (run [:ask "What is the capital city of $q.1?"])
     (def ws3 (run [:unlock "r.1"]))
@@ -84,9 +84,9 @@
 
 (TESTING "Scenario: Reflect – unlock all versions")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "what is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:reply "Austin [Keep it weird.]"])
@@ -124,9 +124,9 @@
 
 (TESTING "Scenario: Reflect reflect reflect")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
 
@@ -184,9 +184,9 @@
 
 (TESTING "Scenario: Reflection – own past")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipping cream?"])
     (run [:unlock "sq.0.a"])
@@ -233,9 +233,9 @@
 
 (TESTING "Scenario: Reflection – two reflection pointers in question and answer")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.1"])
@@ -270,9 +270,9 @@
 
 (TESTING "Scenario: Reflection – delayed unlock")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "Have a look at $r."])
     (run [:ask "Do you have a [dog]?"])
     (run [:unlock "sq.0.a"])
@@ -285,9 +285,9 @@
 
 (TESTING "Scenario: Reflection – pass unlocked reflected pointer in non-root reply")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
@@ -305,13 +305,13 @@
 
 (TESTING "Scenario: Reflection – pass locked reflected pointer in root reply")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas [(USA)]]?")
+    (start-working)
     (run [:unlock "r"])
     (run [:unlock "r.0"])
     (run [:reply "I also wonder what the capital of $r.0.ws.q.1 is."])
-    (get-root-qas conn test-agent))
+    (get-root-qas))
 
 (check!
     #{'(["What is the capital of [1: Texas [1: (USA)]]?"
@@ -319,13 +319,13 @@
 
 (TESTING "Scenario: Reflection – pass locked version")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas [(USA)]]?")
+    (start-working)
     (run [:unlock "q.1"])
     (run [:unlock "r"])
     (run [:reply "Look at how I looked in the beginning: $r.0"])
-    (get-root-qas conn test-agent))
+    (get-root-qas))
 
 (check! #{'(["What is the capital of [1: Texas [1: (USA)]]?"
             "Look at how I looked in the beginning: [1: \n{:max-v 2,
@@ -337,9 +337,9 @@
 
 (TESTING "Scenario: Reflection – pass locked child and launder a reflected hypertext pointer")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas [(USA)]]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "q.1"])
@@ -371,9 +371,9 @@
 
 (TESTING "Scenario: Reflection – pass locked version and unlocked parent in non-root answer")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas [(USA)]]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas [(USA)]]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
@@ -406,13 +406,13 @@
 
 (TESTING "Scenario: Reflection – root reply with hypertext and reflection pointer")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:unlock "q.1"])
     (run [:unlock "r"])
     (run [:reply "[Austin [Stephen F.]], I saw it in $r."])
-    (get-root-qas conn test-agent))
+    (get-root-qas))
 
 (check-diff!
   '(["What is the capital of [1: Texas]?"
@@ -420,9 +420,9 @@
 
 (TESTING "Scenario: Reflection – pass locked parent version")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
@@ -443,9 +443,9 @@
 
 (TESTING "Scenario: Reflection – pass locked child version")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "q.1"])
@@ -473,9 +473,9 @@
 
 (TESTING "Scenario: Reflection – pass unlocked top-level version")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.0"])
@@ -503,9 +503,9 @@
 
 (TESTING "Scenario: Reflection – pass locked top-level version")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:ask "How was I in my younger days ($r.0)?"])
@@ -532,9 +532,9 @@
 
 (TESTING "Scenario: Reflection – pass locked parent")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "r"])
@@ -555,9 +555,9 @@
 
 (TESTING "Scenario: Reflection – pass locked child")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:unlock "r"])
     (run [:unlock "r.2"])
@@ -580,9 +580,9 @@
 
 (TESTING "Scenario: Reflection – pass locked top-level “r”")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "Can you see anything in $r?"])
     (run [:unlock "sq.0.a"])
     (run [:unlock "q.1"])
@@ -594,16 +594,16 @@
     (run [:reply "$sq.0.a"])
     (run [:unlock "sq.0.a.0"])
     (run [:reply "$sq.0.a.0"])
-    (get-root-qas conn test-agent))
+    (get-root-qas))
 
 (check-diff!
   '(["What is the capital of [1: Texas]?" "[0: Austin!]"]))
 
 (TESTING "Scenario: Reflection – pass already unlocked things")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.0.a"])
@@ -642,9 +642,9 @@
 
 (TESTING "Scenario: Reflection – root workspace child – parent")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.0.a"])
@@ -692,9 +692,9 @@
 
 (TESTING "Scenario: Reflection – sub-question parent – child – parent")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-    (start-working conn)
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:ask "Why do you feed your dog whipped cream?"])
     (run [:unlock "sq.1.a"])
@@ -735,19 +735,19 @@
 ;; Tests: Replying in a root workspace with a pointer to a yet ungiven
 ;; sub-answer.
 
-(set-up {:reset? true})
-(run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+(reset)
+(ask-root "What is the capital of [Texas]?")
 
-(start-working conn)
+(start-working)
 (run [:ask "What is the capital city of $q.1?"])
 (run [:reply "Just $sq.0.a."])
 
-(get-root-qas conn test-agent)
+(get-root-qas)
 
-(start-working conn)
+(start-working)
 (run [:reply "Austin. Keep it [weird]."])
 
-(get-root-qas conn test-agent)
+(get-root-qas)
 
 (check!
     #{'(["What is the capital of [1: Texas]?" "Just [1: Austin. Keep it [1: weird].]."])})
@@ -758,10 +758,10 @@
 ;; Tests: Asking a sub-question that contains a pointer to a yet ungiven
 ;; answer to another sub-question.
 
-(set-up {:reset? true})
-(run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+(reset)
+(ask-root "What is the capital of [Texas]?")
 
-(start-working conn)
+(start-working)
 (doseq [command
         [[:ask "What is the capital city of $q.1?"]
          [:ask "What do you think about $sq.0.a?"]
@@ -771,10 +771,10 @@
          [:reply "It's a nice city. Once I went to [Clojure/conj] there."]
          [:unlock "sq.1.a.1"]
          [:reply "It is Austin. $sq.1.a.1 happened there once."]]]
-    (run command {:trace? true})
+    (run command)
     (println))
 
-(get-root-qas conn test-agent)
+(get-root-qas)
 
 (check!
     #{'(["What is the capital of [1: Texas]?"
@@ -783,10 +783,10 @@
 
 (TESTING "Scenario: Auto-unlock")
 
-(do (set-up {:reset? true})
-    (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
+(do (reset)
+    (ask-root "What is the capital of [Texas]?")
 
-    (start-working conn)
+    (start-working)
     (run [:ask "What is the capital city of $q.1?"])
     (run [:reply "$sq.0.a"])
 
@@ -794,7 +794,7 @@
 
 (check! nil?)
 
-(get-root-qas conn test-agent)
+(get-root-qas)
 
 (check-diff!
   '(["What is the capital of [1: Texas]?"
@@ -803,10 +803,10 @@
 
 (TESTING "Scenario: Pointer laundering")
 
-(set-up {:reset? true})
-(run-ask-root-question conn test-agent "How about [bla]?")
+(reset)
+(ask-root "How about [bla]?")
 
-(start-working conn)
+(start-working)
 (run [:ask "What do you think about $q.1?"])
 (run [:unlock "q.1"])
 (run [:unlock "sq.0.a"])

@@ -1,10 +1,8 @@
 (ns jursey.core
-  [:require [clojure.java.io :as io]
-            [clojure.pprint :as pprint]
+  [:require [clojure.pprint :as pprint]
             [clojure.spec.alpha :as spec]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as string]
-            [cognitect.transcriptor :as transcriptor :refer [check!]]
             [datomic.api :as d]
             datomic-helpers
             [instaparse.core :as insta]
@@ -40,6 +38,8 @@
 
 ;;;; Tools
 (def --Tools)
+;; These --* vars are not used in the program. They just show up in the file
+;; structure window of IntelliJ, where they serve as section headings.
 
 (defn compare-count-desc [a b]
   (compare (count b) (count a)))
@@ -91,35 +91,6 @@
 
 (defn ident->cmd [cmd-ident]
   (keyword (name cmd-ident)))
-
-;;;; Setup
-(def --Setup)
-;; These --* vars are not used in the program. They just show up in the file
-;; structure window of IntelliJ, where they serve as section headings.
-
-;; Make these available for auto-completion.
-(declare test-agent)
-(declare conn)
-
-(defn set-up [{:keys [reset?]}]
-  (def test-agent "test")
-
-  (let [base-uri "datomic:free://localhost:4334/"
-        db-name "jursey"
-        db-uri (str base-uri db-name)]
-    (if-not reset?
-      (def conn (d/connect db-uri))
-
-      (do (when (some #{db-name} (d/get-database-names (str base-uri "*")))
-            (d/delete-database db-uri))
-
-          (d/create-database db-uri)
-          (def conn (d/connect db-uri))
-
-          (with-open [rdr (io/reader "src/jursey/schema.edn")]
-            @(d/transact conn (datomic.Util/readAll rdr)))
-          @(d/transact conn [{:agent/handle test-agent}])))))
-
 
 ;;;; Workspace API
 (def --Workspace-API)
@@ -732,9 +703,8 @@
   (@#'datomic-helpers/translate-value (get-cp-hypertext-txtree db id)))
 
 
-;;;; Core API
-(def --PUBLIC-Core-API)
-;; Vars in this section are public unless they're marked as private.
+;;;; Action functions
+(def --Action-functions)
 
 ;; TODO: Use this in all functions that set :tx/ws and :tx/act. (RM 2019-01-18)
 ;; Note: If it should be used in all command-implementing functions,
@@ -985,8 +955,8 @@
     final-txreq))
 
 
-;;;; Single-user runner
-(def --PUBLIC-Runner)
+;;;; Core API
+(def --PUBLIC-Core-API)
 ;; Vars in this section are public unless they're marked as private.
 
 ;; Notes:
@@ -995,6 +965,8 @@
 ;; - Also, maybe I should abstract all the query stuff.
 ;; - I might have to throw in some derefs to make sure that things are
 ;;   happening in the right order.
+
+;; TODO: Make private vars private in this section. (RM 2019-02-21)
 
 (defn- wss-to-show
   "Return IDs of workspaces that are waited for, but not waiting for.
@@ -1165,6 +1137,7 @@
 
   (get-root-qas conn)
 
+  (require 'jursey.repl-ui)
   (in-ns 'jursey.repl-ui)
 
   )
@@ -1174,13 +1147,7 @@
 
 (comment
 
-  (in-ns 'jursey.core)
   (stacktrace/e)
-
-  ;; Don't forget to save test/scenarios.repl!
-  (do (transcriptor/run "test/scenarios.repl")
-      (transcriptor/run "test/repl_ui.repl"))
-
 
   ;;;; Archive
 
