@@ -25,11 +25,11 @@ Table of contents:
 Jursey
 ======
 
-A question-answering system modeled after
+A question-answering system modelled after
 [Patchwork](https://github.com/oughtinc/patchwork). Differences:
 - Supports [reflection](doc/feature_demo.clj).
 - Equal pointers in a sub-question become separate pointers in the
-  sub-workspace. Same as in
+  respective sub-workspace. This is taken from
   [Affable](https://github.com/oughtinc/affable/tree/a4f53b09bd09bb769801e21775f2e13e3cb23cab#interactions).
 - Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
 
