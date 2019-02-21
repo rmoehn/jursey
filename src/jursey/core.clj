@@ -608,6 +608,9 @@
           :locked
           (render-reflect-data reflect-data))})
 
+(defn render-wsid [db id]
+  (render-wsdata (get-wsdata db id)))
+
 
 ;;;; Hypertext copying
 (def --Hypertext-copying)
@@ -1051,25 +1054,22 @@
          finished-wsids (d/q query db agent)]
      (map #(get-root-qa conn %) finished-wsids))))
 
-(defn render-wsid [db id]
-  (render-wsdata (get-wsdata db id)))
-
 ;; TODO: Make command/cmd consistent. Maybe also act/action. (RM 2019-02-21)
 ;; FIXME: Rename wsstr to something else.
-(defn save-automatic-action [conn wsstr [cmd content]]
+(defn- save-automatic-action [conn wsstr [cmd content]]
   @(d/transact conn
                [{:automation/wsstr (str wsstr)
                  :automation/act   {:act/command (keyword "act.command" (name cmd))
                                     :act/content content}}]))
 
-(defn get-automatic-action [db wsstr]
+(defn- get-automatic-action [db wsstr]
   (let [{{{command-id :db/id} :act/command
           content             :act/content} :automation/act}
         (d/pull db '[:automation/act] [:automation/wsstr (str wsstr)])]
     (when (some? command-id)
       [(ident->cmd (d/ident db command-id)) content])))
 
-(def cmd->fn
+(def ^:private cmd->fn
   {:ask ask
    :unlock unlock
    :reply reply})
@@ -1083,14 +1083,14 @@
         _ (doall (get-root-qas conn))]))
 
 ;; FIXME Rename this and the following function.
-(defn automate-ws [db wsid]
+(defn- automate-ws [db wsid]
   (let [wsdata (get-wsdata db wsid)
         wsstr (render-wsdata wsdata)
         action (get-automatic-action db wsstr)]
     (when (some? action)
       [wsid action])))
 
-(defn automate-wss [db wsids]
+(defn- automate-wss [db wsids]
   (->> wsids
        (map #(automate-ws db %))
        (filter some?)))
@@ -1120,27 +1120,6 @@
   (take-action conn wsid action)
   (automate-where-possible conn))
 
-(comment
-
-  (set-up {:reset? true})
-
-  (run-ask-root-question conn test-agent "What is the capital of [Texas]?")
-
-  (automate-where-possible conn)
-
-  (run conn (first *1) [:ask "Hulla ho?"])
-  (run conn (first *1) [:ask "Hulla ho?"])
-  (run conn (first *1) [:unlock "sq.0.a"])
-  (run conn (first *1) [:reply "Ho ho hullohu."])
-  (run conn (first *1) [:unlock "sq.1.a"])
-  (run conn (first *1) [:reply "It's a secret."])
-
-  (get-root-qas conn)
-
-  (require 'jursey.repl-ui)
-  (in-ns 'jursey.repl-ui)
-
-  )
 
 ;;;; Development tools
 (def --Development-tools)

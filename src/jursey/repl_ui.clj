@@ -8,7 +8,7 @@
 (declare test-agent)
 (declare conn)
 
-(defn init [{:keys [reset?]}]
+(defn- init [{:keys [reset?]}]
   (def test-agent "test")
 
   (let [base-uri "datomic:free://localhost:4334/"
