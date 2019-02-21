@@ -28,7 +28,8 @@ Jursey
 A question-answering system modeled after
 [Patchwork](https://github.com/oughtinc/patchwork). Differences:
 - Supports [reflection](doc/feature_demo.clj).
-- Copies and renumbers pointers to the same thing like
+- Equal pointers in a sub-question become separate pointers in the
+  sub-workspace. Same as in
   [Affable](https://github.com/oughtinc/affable/tree/a4f53b09bd09bb769801e21775f2e13e3cb23cab#interactions).
 - Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
 
@@ -39,8 +40,8 @@ Limitations
 Removing the following limitations would only be worthwhile if Jursey was going
 to be used by regular users. So far it looks like this won't be the case.
 
-- Jursey is not (yet?) user-friendly. If your input doesn't follow the rules,
-  the output won't make sense to you. The error messages won't be helpful.
+- Jursey is not user-friendly. If your input doesn't follow the rules, the
+  output won't make sense to you. The error messages won't be helpful.
 
 - There is no way to escape special symbols in hypertext. You cannot use any of
   `[]$` in normal text. This is not a fundamental limitation and could be fixed
