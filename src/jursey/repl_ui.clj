@@ -85,6 +85,9 @@
   (ask "1 pound = ? kg")
   (unlock "sq.0.a")
   (reply "approx. 0.5")
+
+  (def ws1 *1)
+
   (reply "approx. 1.5 kg")
 
   (unlock "sq.1.a")
@@ -94,6 +97,9 @@
   (ask "1 pound = ? kg")
   (unlock "sq.0.a")
   (ask "What is 20 * 1.5 kg?")
+
+  (def ws2 *1)
+
   (reply "$sq.1.a")
 
   (unlock "r")
@@ -108,11 +114,49 @@
 
   )
 
+;; Exercise for the reader: Come up with a more elegant diffing algorithm.
+;; clojure.data/diff might be too general to be appropriate.
+
+(defn zip-indexed-qas [qas1 qas2]
+  (let [max-i (->> (merge qas1 qas2)
+                   keys
+                   (map #(Integer/parseInt %))
+                   (apply max))]
+    (reduce
+      (fn [res-so-far i]
+        (let [str-i (str i)]
+          (assoc res-so-far
+            str-i
+            [(get qas1 str-i) (get qas2 str-i)])))
+      {}
+      (range (inc max-i)))))
+
+(defn diff-qas [qas1 qas2]
+  (let [i+qa1+qa2s (zip-indexed-qas qas1 qas2)]
+    (reduce
+      (fn [[in1-so-far in2-so-far in-common-so-far]
+           [str-i [{q1 "q" a1 "a"} {q2 "q" a2 "a"}]]]
+        [(cond-> in1-so-far
+                 (and (not= q1 q2) (some? q1)) (assoc-in [str-i "q"] q1)
+                 (and (not= a1 a2) (some? a1)) (assoc-in [str-i "a"] a1))
+         (cond-> in2-so-far
+                 (and (not= q1 q2) (some? q2)) (assoc-in [str-i "q"] q2)
+                 (and (not= a1 a2) (some? a2)) (assoc-in [str-i "a"] a2))
+         (cond-> in-common-so-far
+                         (= q1 q2)             (assoc-in [str-i "q"] q1)
+                         (= a1 a2)             (assoc-in [str-i "a"] a1))])
+      [{} {} {}]
+      i+qa1+qa2s)))
+
 (defn diff [ws1 ws2]
   (let [q-diff (if (= (get ws1 "q") (get ws2 "q"))
                  [{}                  {}                  {"q" (get ws1 "q")}]
-                 [{"q" (get ws1 "q")} {"q" (get ws2 "q")} {}])]))
+                 [{"q" (get ws1 "q")} {"q" (get ws2 "q")} {}])
+        qa-diff (diff-qas (get ws1 "sq") (get ws2 "sq"))]
+    (mapv #(assoc %1 "sq" %2) q-diff qa-diff)))
 
 (comment
+
+  (diff ws1 ws2)
 
   )
