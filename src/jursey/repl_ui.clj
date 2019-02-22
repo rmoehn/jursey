@@ -109,8 +109,47 @@
 
   (ask "Give me the last version of $q.1.")
   (ask "Give me the last version of $q.3.")
-  (ask "Are [the question of $sq.0.a] and [the question of $sq.1.a] equal?")
-  (ask "Zip [the sub-qas of $sq.0.a] and [$sq.1.a].")
+  (ask "Give me a diff of [the question of $sq.0.a] and [the question of $sq.1.a].")
+
+  ;; temporary
+  (unlock "sq.2.a")
+  (ask "Are $q.1 and $q.3 equal?")
+  (unlock "sq.0.a")
+
+  (unlock "q.1")
+  (unlock "q.3")
+  (ask "Give me the question of $q.1.1.")
+  (ask "Give me the question of $q.3.1.")
+  (ask "Are $sq.0.a and $sq.1.a equal?")
+  (reply "$sq.2.a")
+
+  (unlock "sq.0.a.0")
+
+  (unlock "q.1")
+  (unlock "q.1")
+  ;; Here it would be useful if I could access q.1.max-v – the actual
+  ;; version, not the version number.
+  ;; Also, I often accidentally write things like (reply "q.1.5"). In order
+  ;; to avoid this confusion, it might be better to change (unlock "…") to
+  ;; (unlock "$…")
+  (reply "$q.1.5")
+  (unlock "q.1.0")
+  (reply "$q.1.0.5.ws.q")
+
+  (unlock "q.1.0")
+  (unlock "q.3")
+  ;; No automation here, because we can't access max-v.
+  (reply "$q.1.6")
+  ;; Again no automation. Here only one version is displayed, so no matter
+  ;; what the version number is, it should be able to just return the
+  ;; question. – (reply "$q.1.0.*.ws.q")
+  (reply "$q.1.0.6.ws.q")
+  (unlock "q.3.0")
+  ;; Now I ran into a problem with copying pointers within reflection. – They
+  ;; are getting locked, even though they should be unchanged snapshots.
+
+  ;; It might be useful if pointer paths themselves could be assembled from
+  ;; pointers. $r.{$sq.a.0} where $sq.a.0 is "5", for example.
 
   )
 
