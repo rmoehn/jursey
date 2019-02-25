@@ -12,4 +12,4 @@
 
   :plugins [[mvxcvi/whidbey "2.0.0"]]
   :middleware [whidbey.plugin/repl-pprint]
-  :repl-options {:init-ns jursey.core})
+  :repl-options {:init-ns jursey.repl-ui})

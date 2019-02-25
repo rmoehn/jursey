@@ -102,9 +102,9 @@ container](#Using-a-Docker-container).)
     $ cd .. # Back to project root.
     $ lein repl
     …
-    jursey.core=> (set-up {:reset? true})
+    jursey.repl-ui=> (set-up)
     …
-    jursey.core=> (run-ask-root-question conn test-agent "What is your name?")
+    jursey.repl-ui=> (ask-root "What is your name?")
     …
     ```
 
