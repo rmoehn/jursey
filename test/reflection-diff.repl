@@ -117,7 +117,7 @@
 (unlock "q.1")
 ;; ISSUE It would be useful if I could access q.1.max-v – the actual version,
 ;; not the version number.
-;; ISSUE I often accidentally write things like (reply "q.1 .5"). In order to
+;; ISSUE I often accidentally write things like (reply "q.1.5"). In order to
 ;; avoid this confusion, it might be better to change (unlock "…") to (unlock
 ;; "$…")
 (reply "$q.1.5")
