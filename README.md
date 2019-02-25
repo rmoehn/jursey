@@ -34,6 +34,16 @@ modelled after [Patchwork](https://github.com/oughtinc/patchwork). Differences:
 - Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
 
 
+Applications of reflection
+--------------------------
+
+- [Ask for clarification of a question](test/clarification-swallows.repl)
+- [Diff workspaces](test/reflection-diff.repl)
+
+If you search the files linked above for ‘ISSUE’, you will find comments about
+problems with the Jursey model.
+
+
 Limitations
 -----------
 

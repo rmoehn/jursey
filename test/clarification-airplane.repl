@@ -1,5 +1,9 @@
 (use 'jursey.repl-ui)
 
+;;;;;; Application of reflection: Ask for clarification of a question
+
+;; Look at clarification-swallows.repl for an easier example.
+
 (reset)
 
 (ask-root "How many [table tennis balls] fit in a [Boeing 787]?")

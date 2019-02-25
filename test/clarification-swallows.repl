@@ -1,9 +1,14 @@
 (use 'jursey.repl-ui)
 (require '[jursey.transcriptor-tools :refer [TESTING check-diff!]])
 
+;;;;;; Application of reflection: Ask for clarification of a question
+
 ;; Look at the argument of the check-diff! calls to see what the workspace
 ;; looks like at that point. This way you don't necessarly have to run the
 ;; commands in your own REPL.
+
+;; For another example of clarification, see clarification-airplane.repl. It
+;; points out a problem with non-unified pointers.
 
 (reset)
 (ask-root "How long does it take a swallow to cross the Channel between Calais and Dover?")

@@ -1,7 +1,10 @@
 (use 'jursey.repl-ui)
 
-;; Diff two workspaces in Jursey, assisted by automation. Problem: Automation
-;; can't assist much.
+;;;;;; Application of reflection: Diff two workspaces
+
+;; This is an exploration. It shows the ways in which reflection hampers
+;; automation.
+
 
 ;;;; Algorithm draft in Clojure
 
