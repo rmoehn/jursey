@@ -11,14 +11,15 @@ Table of contents:
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
-- [Limitations](#limitations)
-- [Getting started](#getting-started)
-- [Using a Docker container](#using-a-docker-container)
-- [Branches](#branches)
-- [TODOs](#todos)
-- [Design](#design)
-- [References](#references)
-- [License](#license)
+  - [Applications of reflection](#applications-of-reflection)
+  - [Limitations](#limitations)
+  - [Getting started](#getting-started)
+  - [Using a Docker container](#using-a-docker-container)
+  - [Branches](#branches)
+  - [TODOs](#todos)
+  - [Design](#design)
+  - [References](#references)
+  - [License](#license)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -32,6 +33,16 @@ modelled after [Patchwork](https://github.com/oughtinc/patchwork). Differences:
   respective sub-workspace. This is taken from
   [Affable](https://github.com/oughtinc/affable/tree/a4f53b09bd09bb769801e21775f2e13e3cb23cab#interactions).
 - Uses [Datomic](https://www.datomic.com/benefits.html) as its database.
+
+
+Applications of reflection
+--------------------------
+
+- [Ask for clarification of a question](test/clarification-swallows.repl)
+- [Diff workspaces](test/reflection-diff.repl)
+
+If you search the files linked above for ‘ISSUE’, you will find comments about
+problems with the Jursey model.
 
 
 Limitations

@@ -1,6 +1,7 @@
 (ns jursey.repl-ui
   "Single-user runner"
   [:require [clojure.java.io :as io]
+            [cognitect.transcriptor :as transcriptor :refer [check!]]
             [datomic.api :as d]
             [jursey.core :as j]])
 
@@ -62,9 +63,10 @@
 
 (comment
 
-  ;; Don't forget to save test/scenarios.repl!
-  (do (require '[cognitect.transcriptor :as transcriptor :refer [check!]])
-      (transcriptor/run "test/scenarios.repl")
-      (transcriptor/run "test/repl_ui.repl"))
+  ;; Don't forget to save the REPL file!
+  (do (transcriptor/run "test/scenarios.repl")
+      (transcriptor/run "test/repl_ui.repl")
+      (transcriptor/run "test/clarification-swallows.repl")
+      (transcriptor/run "test/clarification-airplane.repl"))
 
   )

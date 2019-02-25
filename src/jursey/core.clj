@@ -12,6 +12,9 @@
          :rename {safe-get sget safe-get-in sget-in}]])
 ;; Also uses: datomic.Util
 
+;; TODO: The Clojure style guide recommends to prepend top-level comments
+;; with three semicolons. Fix this everywhere. (RM 2019-02-25)
+
 ;; act  … action
 ;; aht  … answer hypertext
 ;; cmd  … command
