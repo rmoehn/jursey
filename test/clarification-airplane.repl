@@ -1,3 +1,4 @@
+; vim: filetype=clojure
 (use 'jursey.repl-ui)
 
 ;;;;;; Application of reflection: Ask for clarification of a question

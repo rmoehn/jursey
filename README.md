@@ -45,7 +45,7 @@ Applications of reflection
 If you search the files linked above for ‘ISSUE’, you will find comments about
 problems with the Jursey model.
 
-asdi
+
 Limitations
 -----------
 

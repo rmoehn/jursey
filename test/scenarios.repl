@@ -1,3 +1,4 @@
+; vim: filetype=clojure
 (use 'jursey.repl-ui)
 (require '[cognitect.transcriptor :refer (check!)]
          '[jursey.transcriptor-tools :refer [TESTING check-diff!]])
