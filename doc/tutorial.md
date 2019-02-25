@@ -51,7 +51,7 @@
   REPL prompt:
 
     ```
-    jursey.core=>
+    jursey.repl-ui=>
     ```
 
 
@@ -76,20 +76,13 @@ output won't make sense to you. The error messages won't be helpful.
 <!-- TODO: Automatically extract a REPL file from this and run it to make sure
 that all the commands and results are correct. (RM 2019-02-11) -->
 
-Load the most concise single-user UI:
-
-```
-jursey.core=> (do (require 'jursey.repl-ui) (in-ns 'jursey.repl-ui))
-jursey.repl-ui=>
-```
-
-From now on I will leave out the prompt.
-
 Connect to the database:
 
 ```
-(set-up)
+jursey.repl-ui=> (set-up)
 ```
+
+From now on I will leave out the prompt.
 
 Ask a root question:
 
