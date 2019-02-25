@@ -1,0 +1,56 @@
+(use 'jursey.repl-ui)
+
+(reset)
+
+(ask-root "How many [table tennis balls] fit in a [Boeing 787]?")
+
+(start-working)
+(ask "Is the outer volume of $q.1 much smaller than the inner volume of $q .3?")
+(unlock "sq.0.a")
+(unlock "q.1")
+(unlock "q.3")
+(reply "Yes.")
+
+(ask "What is the packing density of $q.1?")
+
+(ask "What is the inner volume of $q.3?")
+(unlock "sq.2.a")
+
+(unlock "q.1")
+(unlock "r")
+(ask "Given workspace $r.parent and its ancestors, do you think ‘inner volume of a $q.1’ means the volume of the [cabin], the [whole fuselage] or [all hollow space]?")
+;; One could just get an answer for each option, but in this case it's
+;; efficient to at least eliminate the "all hollow space" option, because it
+;; would be hard to determine.
+(unlock "sq.0.a")
+(unlock "q.1")
+(unlock "q.1.3")
+
+;; ISSUE The user has to look very sharply to find out which pointers likely
+;; have the same target.
+
+(unlock "q.3")
+(ask "When you ask about packing small objects into a $q.3, would you mean packing them into $q.5?")
+(ask "When you ask about packing small objects into a $q.3, would you mean packing them into $q.7?")
+(ask "When you ask about packing small objects into a $q.3, would you mean packing them into $q.9?")
+
+(unlock "sq.0.a")
+
+(unlock "q.1")
+(unlock "q.3")
+(reply "Yes.")
+
+(unlock "sq.1.a")
+;; Automation!
+(reply "Yes.")
+
+(unlock "sq.2.a")
+;; Automation!
+(reply "No.")
+
+(reply "The volume of $q.5 or $q.7.")
+(ask "What is the inner volume of the $sq.0.a.1 of a $q.1?")
+(ask "What is the inner volume of the $sq.0.a.3 of a $q.1?")
+(reply (str "Depends on what is meant.\n"
+            "$sq.0.a.1: $sq.1.a\n"
+            "$sq.0.a.3: $sq.2.a"))
