@@ -11,7 +11,6 @@ Table of contents:
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
-- [Jursey](#jursey)
   - [Applications of reflection](#applications-of-reflection)
   - [Limitations](#limitations)
   - [Getting started](#getting-started)
