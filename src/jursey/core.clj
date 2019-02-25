@@ -886,6 +886,9 @@
                             :reflect/parent rid}))]))
 
 ;; TODO: Make sure that the pointer is actually locked.
+;; TODO: Print error message when a user tries to unlock a reflected pointer.
+;; Currently it's a no-op, which results in an infinite automation loop. (RM
+;; 2019-02-25)
 (defn unlock [db wsid wsdata pointer]
   (let [path (->path pointer)
         parent-path (pop path)
@@ -1123,8 +1126,9 @@
 ;; waiting for another workspace. (RM 2019-01-08)
 ;; TODO: Add all kinds of input validation. See also other TODOs. (RM 2019-02-04)
 (defn run [conn wsid act]
-  (save-automatic-act conn (render-wsid (d/db conn) wsid) act)
-  (take-act conn wsid act)
+  (let [wsmap-before (render-wsid (d/db conn) wsid)]
+    (take-act conn wsid act)
+    (save-automatic-act conn wsmap-before act))
   (automate-where-possible conn))
 
 
