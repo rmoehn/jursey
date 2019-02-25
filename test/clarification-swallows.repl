@@ -1,0 +1,68 @@
+(use 'jursey.repl-ui)
+(require '[jursey.transcriptor-tools :refer [TESTING check-diff!]])
+
+;; Look at the argument of the check-diff! calls to see what the workspace
+;; looks like at that point. This way you don't necessarly have to run the
+;; commands in your own REPL.
+
+(reset)
+(ask-root "How long does it take a swallow to cross the Channel between Calais and Dover?")
+(start-working)
+
+(ask "What is the air-speed velocity of an unladen swallow?")
+(check-diff!
+  {"q" "How long does it take a swallow to cross the Channel between Calais and Dover?",
+   "sq" {"0" {"q" "What is the air-speed velocity of an unladen swallow?",
+              "a" :locked}},
+   "r" :locked})
+(unlock "sq.0.a")
+
+(unlock "r")
+(ask "For the purposes of $r.parent and possibly its ancestors, do you mean an African or a European swallow?")
+(ask "What is the air-speed velocity of $sq.0.a?")
+(check-diff!
+  {"q" "What is the air-speed velocity of an unladen swallow?",
+   "sq" {"0" {"q" "For the purposes of $r.parent and possibly its ancestors, do you mean an African or a European swallow?",
+              "a" :locked},
+         "1" {"q" "What is the air-speed velocity of $sq.0.a?", "a" :locked}},
+   "r" {:max-v 3, "parent" :locked}})
+(reply "$sq.1.a")
+
+(check-diff!
+  {"q" "How long does it take a swallow to cross the Channel between Calais and Dover?",
+   "sq" {"0" {"q" "What is the air-speed velocity of an unladen swallow?",
+              "a" "$0"}},
+   "r" :locked})
+(unlock "sq.0.a.0")
+
+(check-diff!
+  {"q" "What is the air-speed velocity of $1?", "sq" {}, "r" :locked})
+(unlock "q.1")
+
+(unlock "q.1")
+(unlock "q.1.0")
+(check-diff!
+  {"q" "For the purposes of [1: \n{:max-v 0,
+ “0”
+ {“ws”
+  {“q”
+   “How long does it take a swallow to cross the Channel between Calais and Dover?”,
+   “sq” {},
+   “r” :locked},
+  “children” {},
+  “act” [:ask “What is the air-speed velocity of an unladen swallow?”]}}
+] and possibly its ancestors, do you mean an African or a European swallow?",
+   "sq" {},
+   "r" :locked})
+(reply "European swallow")
+
+(check-diff!
+  {"q" "What is the air-speed velocity of [1: European swallow]?",
+   "sq" {},
+   "r" :locked})
+(reply "11-20 m/s, according to [Wikipedia]")
+(check-diff!
+  {"q" "How long does it take a swallow to cross the Channel between Calais and Dover?",
+   "sq" {"0" {"q" "What is the air-speed velocity of an unladen swallow?",
+              "a" "[0: 11-20 m/s, according to $1]"}},
+   "r" :locked})

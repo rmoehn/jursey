@@ -67,6 +67,96 @@
       (transcriptor/run "test/scenarios.repl")
       (transcriptor/run "test/repl_ui.repl"))
 
+  (require '[jursey.transcriptor-tools :refer [check-diff!]])
+
+  (transcriptor/run "test/clarification-swallows.repl")
+
+  )
+
+(comment
+
+  (set-up)
+
+  (ask-root "How many [table tennis balls] fit in a [Boeing 787]?")
+
+  (start-working)
+  (ask "Is the outer volume of $q.1 much smaller than the inner volume of $q .3?")
+  (unlock "sq.0.a")
+  (unlock "q.1")
+  (unlock "q.3")
+  (reply "Yes.")
+
+  (ask "What is the packing density of $q.1?")
+
+  (ask "What is the inner volume of $q.3?")
+  (unlock "sq.2.a")
+
+  (unlock "q.1")
+  (unlock "r")
+  (ask "Given workspace $r.parent and its ancestors, do you think ‘inner volume of a $q.1’ means the volume of the [cabin], the [whole fuselage] or [all hollow space]?")
+  ;; Alternatively, one could just get an answer for each option.
+  (unlock "sq.0.a")
+  (unlock "q.1")
+  (unlock "q.1.3")
+
+  ;; At this point the user has to look very sharply to find out which
+  ;; pointers likely have the same target.
+
+  (unlock "q.3")
+  (ask "When you ask about packing small objects into a $q.3, would you mean packing them in $q.5?")
+  (ask "When you ask about packing small objects into a $q.3, would you mean packing them in $q.7?")
+  (ask "When you ask about packing small objects into a $q.3, would you mean packing them in $q.9?")
+
+  (unlock "sq.0.a")
+
+  ;; A different root question's sub-workspace coming in…
+  (reply "Yes.")
+  (reply "I'm lazy.")
+  (reply "Everyone refused. It's their fault.")
+  (reply "No chance.")
+
+  (unlock "q.1")
+  (unlock "q.3")
+  (reply "Yes.")
+
+  (unlock "sq.1.a")
+  ;; Automation!
+  (reply "Yes.")
+
+  (unlock "sq.2.a")
+  (reply "No.")
+
+  (reply "The volume of $q.5 or $q.7.")
+  (ask "What is the inner volume of the $sq.0.a.1 of a $q.1?")
+  (ask "What is the inner volume of the $sq.0.a.3 of a $q.1?")
+  (reply (str "Depends on what is meant.\n"
+              "$sq.0.a.1: $sq.1.a\n"
+              "$sq.0.a.3: $sq.2.a"))
+
+
+
+
+  (reset)
+  (ask-root "How long does it take a swallow to cross the Channel between Calais and Dover?")
+  (start-working)
+  (ask "What is the air-speed velocity of an unladen swallow?")
+  (unlock "sq.0.a")
+  (unlock "r")
+  (ask "For the purposes of $r.parent and possibly its ancestors, do you mean an African or a European swallow?")
+  (ask "What is the air-speed velocity of $sq.0.a?")
+  (reply "$sq.1.a")
+  (unlock "sq.0.a.0")
+
+  (unlock "q.1")
+
+  (unlock "q.1")
+  (unlock "q.1.0")
+  (reply "European swallow")
+
+  (reply "11-20 m/s, according to [Wikipedia]")
+
+
+
   )
 
 (comment
@@ -147,6 +237,8 @@
   (unlock "q.3.0")
   ;; Now I ran into a problem with copying pointers within reflection. – They
   ;; are getting locked, even though they should be unchanged snapshots.
+  ;; Wrong. They are now outside a reflection structure – just the question
+  ;; hypertexts themselves, so locking them is correct.
 
   ;; It might be useful if pointer paths themselves could be assembled from
   ;; pointers. $r.{$sq.a.0} where $sq.a.0 is "5", for example.
