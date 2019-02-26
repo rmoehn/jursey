@@ -30,6 +30,14 @@
        "1" {"q" "What is 20 * 1.5 kg?", "a" :locked}},
  "r" :locked}
 
+;; The second workspace in the diff.
+"{`q` `What is the mass of [1: 20] [3: three-pound loaf] in $5?`,
+  `sq` {`0` {`q` `1 pound = ? kg`, `a` `approx. 0.5`},
+        `1` {`q` `What is 20 * 1.5 kg?`, `a` :locked}},
+  `r` :locked}"
+
+"{`q` `What is the mass of !$x.q.1 !$x.q.3 in ?$x.q.5?`"
+
 (reply "$sq.1.a")
 
 {"q" "The root question doesn't matter.",
@@ -262,5 +270,5 @@ and [3:
 ;; TODO: How would it look for nested hypertext? (RM 2019-02-25)
 ;; How would it look in reality?
 
-;; If they are equal at one level, I have look at the components. If they are
+;; If they are equal at one level, I have to look at the components. If they are
 ;; unequal at a level, I just return the parts.

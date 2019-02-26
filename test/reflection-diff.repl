@@ -93,6 +93,9 @@
 
 (unlock "r")
 (unlock "r.4")
+
+(ask "How about $r.4.ws.q?")
+
 (ask "Give me a diff of the last versions of $r.4.children.0 and $r.4.children.1.")
 (unlock "sq.2.a")
 
