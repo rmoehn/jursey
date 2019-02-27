@@ -387,26 +387,40 @@ C9t4
 
 [:unlock "r.3.act"]
 
+;; I guess it's easier to say everything that was originally visible is :+lck,
+;; whether it could have been locked or not.
+
 C10
 {:q  "What is the capital city of [0: Texas]?"
  :sq {0 {:q "Who was the father of $q.0?"
          :a "Stephen F. Austin"}}
  :r  {:parent :locked
-      :max-v  10
+      :max-v  :locked
       3 {:ws :locked
-         :act [:unlock "r"]
+         :act {:cmd :locked :arg :locked}
          :children {0 {:parent :locked
-                       :max-v 4
-                       4 {:ws {:q "Who was the father of $1?"
-                               :r {:parent {:parent :locked
-                                            :max-v  2
-                                            2 {:ws {:q  "What is the capital city of [0: Texas]?"
-                                                    :sq {0 {:q "Who was the father of $q.0?"
-                                                            :a :locked}}
-                                                    :r  :locked}
-                                               :act :locked
-                                               :children :locked}}
-                                   :max-v  4}}
+                       :max-v :locked
+                      -1 {:ws {:q  :+lck
+                               :sq :+lck
+                               :r  :+lck}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:unlock ["r.3.act.cmd" "r.3.act.arg"]]
+
+C11
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act {:cmd :unlock :arg "r"}
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q  :+lck
+                               :sq :+lck
+                               :r  :+lck}
                           :act :locked
                           :children :locked}}}}}}
 
@@ -420,7 +434,7 @@ P2
          :a "Austin"}}
  :r :locked}
 
-[:unlock "r"]
+[:unlock "r.max-v"]
 
 P3
 {:q  "What is the capital of $0?"
@@ -464,9 +478,9 @@ P6
      2 {:ws :locked
         :act :locked
         :children {0 {:parent :locked
-                      :max-v 10}}}}}
+                      :max-v :locked}}}}}
 
-[:unlock "r.2.children.0.10"]
+[:unlock "r.2.children.0.-1"]
 
 P7
 {:q  "What is the capital of $0?"
@@ -477,12 +491,77 @@ P7
      2 {:ws :locked
         :act :locked
         :children {0 {:parent :locked
-                      :max-v 10
-                      {10 {:ws :locked
+                      :max-v :locked
+                      {-1 {:ws :locked
                            :act :locked
                            :children :locked}}}}}}}
 
 [:unlock "r.2.children.0.10.ws"]
+
+P8
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q :+lck
+                                :sq :+lck
+                                :r :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+[:unlock ["r.2.children.0.10.ws.q" "r.2.children.0.10.ws.r"]]
+
+P9
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q "What is the capital of $+1?"
+                                :sq :+lck
+                                :r {:parent :locked
+                                    :max-v :locked
+                                    _ :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+;; When there is only one version to show and it hasn't explicitly been unlocked
+;; by number before, then it will be shown as _ (or +_ etc.). If you need to
+;; reveal the number behind it, you can use the magic __ in the path.
+;; → So now version numbers are locked/hidden as well. → -1 is ambiguous → Need
+;; a different syntax. $^1 $_1 $=1 _-1 =-1 ^-1 ^*
+
+;; The last version is shown as -1 as long as :max-v is locked.
+
+[:unlock "r.2.children.0.10.ws.r._"]]
+P10
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q "What is the capital of $+1?"
+                                :sq :+lck
+                                :r {:parent :locked
+                                    :max-v :locked
+                                    3 :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+
 
 P8
 {:q  "What is the capital of $0?"
