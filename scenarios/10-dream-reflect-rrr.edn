@@ -1,3 +1,9 @@
+;;;;; Automation-friendly reflection explored with the reflect³ scenario
+
+;; Here I took the ideas from 09-dream-reflect-diff.repl and developed them
+;; further to make them work with nested reflection. Then I distilled them into
+;; /doc/design/002-reflection-automation.md.
+
 [:root "What is the capital of [Texas]?"]
 
 P0
