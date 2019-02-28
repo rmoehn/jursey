@@ -83,7 +83,7 @@ Decision
 --------
 
 Based on explorations in the files
-[09-dream-reflect-diff.edn](/scenarios/09-dream-reflect-diff.edn) and
+[09-dream-reflect-diff.edn](/scenarios/09-dream-reflect-diff.repl) and
 [10-dream-reflect-rrr.edn](/scenarios/10-dream-reflect-rrr.edn).
 
 Note that if we drop support of nested reflection, many of these become easier,
