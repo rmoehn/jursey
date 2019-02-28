@@ -23,6 +23,11 @@ Nomenclature
 Context
 -------
 
+Most of these desiderata I found while trying to implement [workspace
+diffing](/scenarios/08-failed-automation-diff.repl) (according to Derek's
+suggestion). This led me to notice that many actions that are automatable in
+principle don't trigger automation because of how reflection behaves.
+
 1. For reflection to be correct, the user must be able to infer from the
    reflection structure how the original looked (snapshot property). Currently
    this only holds for reflects and versions. So if you ask "Give me a diff
@@ -78,8 +83,8 @@ Decision
 --------
 
 Based on explorations in the files
-[09-dream-reflect-rrr.edn](/scenarios/09-dream-reflect-rrr.edn) and
-[reflection-diff.repl](/test/reflection-diff.repl).
+[09-dream-reflect-diff.edn](/scenarios/09-dream-reflect-diff.edn) and
+[10-dream-reflect-rrr.edn](/scenarios/10-dream-reflect-rrr.edn).
 
 Note that if we drop support of nested reflection, many of these become easier,
 some become obsolete.
