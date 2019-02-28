@@ -1,9 +1,10 @@
 See also:
 - [Tutorial and command overview](doc/tutorial.md)
-- [Feature demonstration](doc/feature_demo.clj)
+- [Applications](#applications-of-reflection) and [features](doc/feature_demo.clj)
 - [Implementation tidbits](doc/implementation.md)
+- [Proposal for automation-friendly reflection](doc/design/002-reflection-automation.md)
 - [Implications for research and possibilities for future work](doc/so-what-what-now.md)
-- [Internal and slightly outdated design summary](design.md)
+- [Internal and slightly outdated design summary](doc/design/001-basic-design.md)
 
 Table of contents:
 
@@ -39,10 +40,11 @@ Applications of reflection
 --------------------------
 
 - [Ask for clarification of a question](test/clarification-swallows.repl)
-- [Diff workspaces](test/reflection-diff.repl)
+- [Diff workspaces](scenarios/08-failed-automation-diff.repl)
 
-If you search the files linked above for ‘ISSUE’, you will find comments about
-problems with the Jursey model.
+If you search the second file and [this](test/clarification-airplane.repl) for
+‘ISSUE’, you will find comments about problems with the Jursey model. [This
+proposal](doc/design/002-reflection-automation.md) addresses some of them.
 
 
 Limitations
