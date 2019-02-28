@@ -1,10 +1,8 @@
-ADR 2: Automatability
-=====================
+DR 2: Automatability
+====================
 
-Context
--------
-
-Nomenclature:
+Nomenclature
+------------
 
 - When I write about ‘passing’ a pointer, I mean asking a sub-question or giving
   a reply that contains a pointer.
@@ -22,9 +20,12 @@ Nomenclature:
   ```
 
 
+Context
+-------
+
 1. For reflection to be correct, the user must be able to infer from the
    reflection structure how the original looked (snapshot property). Currently
-   this only happens with reflects and versions. So if you ask "Give me a diff
+   this only holds for reflects and versions. So if you ask "Give me a diff
    of hypertexts $r.-1.children.0.-1.ws.q and $r.-1.children.1.-1.ws.q.", those
    reflected questions will become plain hypertext without any indication of
    whether the pointers in them were originally locked or unlocked.
@@ -33,12 +34,11 @@ Nomenclature:
    One shouldn't have to reveal more information than is needed to decide the
    next action. In other words, we need finer-grained unlocks.
 
-   Currently, unlocking a version reveals the workspace, the action and which
-   children it has, even though many algorithm steps will only be interested in
-   passing along a question, regardless of its content. Additionally, the
-   snapshot property is only preserved if you pass around reflects or versions.
-   This is far too much if you just ask a sub-question to diff two workspaces'
-   questions, for example.
+   Currently, unlocking a version reveals the workspace, the number of its
+   children and which action was taken, even though many algorithm steps will
+   only be interested in passing along the workspace's question (to get a diff,
+   for example), regardless of its content. But if they passed a pointer at only
+   the question, the snapshot property would get lost (cf. item 1).
 
 3. In addition to finer-grained unlocks, predictable automatic actions should
    not be prevented by revealing a piece of specific information. For example,
@@ -47,10 +47,10 @@ Nomenclature:
 
    ```
    (unlock "q.1") → "What is the mass of [1: 1] $3 in $5?"
-   Now we need a separate automation entry for every possible target of $q.1
+   Now we need a separate automation entry for every possible target of $q.1.
    (unlock "q.2") → "What is the mass of [1: 1] [3: three-pound bread] in $5?"
    Now we need a separate automation entry for every possible target of $q.1 and
-   $q.3
+   $q.3.
    ```
 
    Better:
@@ -76,61 +76,95 @@ Nomenclature:
 
 Decision
 --------
+TODO: Adjust the item numbers.
+
+Based on explorations in the files
+[09-dream-reflect-rrr.edn](/scenarios/09-dream-reflect-rrr.edn) and
+[reflection-diff.repl](/test/reflection-diff.repl).
 
 Note that if we drop support of nested reflection, many of these become easier,
 some become obsolete.
 
 1. Everything from within a reflection structure can be passed around without
-   losing it's snapshot property. You can remove the snapshot property (turning
+   losing its snapshot property. You can remove the snapshot property (turning
    the target into plain hypertext) by suffixing the pointer path with `#`.
    Example: `(ask "How about $r.-1.ws.q#?")`
-   TODO: Verify this in the nested case.
+   TODO: Validate this in the nested case.
 
-   Reflected workspaces can be passed around. Only reflects access to all
-   reachable parts of the reflection graph. When you pass a version, the
-   containing reflect is automatically passed along with it.
-   TODO: Should I drop the latter behaviour?
+   Details:
+   - Reflected workspaces can be passed around.
+   - Only through a reflect the user has access to all reachable parts of the
+     reflection graph.
+   - When you pass a version, the containing reflect is automatically passed
+     along with it. TODO: Should I drop this behaviour?
 
-2. If only one version of a workspace is shown and the version was not
-   previously unlocked by number, the version number itself is locked:
+6. `:max-v` stays unlocked only until it would be incremented. Ie. I unlock
+   `r.max-v`, I see it, I issue another command and it's gone again. `:max-v`s
+   further down a reflection tree will never be incremented, so they stay
+   unlocked.
+
 
    ```
+   ↓ (unlock "r.max-v")
+
+   {"r" {"parent" :locked
+         :max-v 4
+         "3" {"children" {"0" {"parent" :locked
+                               :max-v 2}}}}}
+
+   ↓ (unlock "r.5.children.0.1")
+
+   {"r" {"parent" :locked
+         :max-v :locked ; Would have become 5. → Gets locked.
+         "5" {"children" {"0" {"parent" :locked
+                               :max-v 2 ; Stays the same. Stays unlocked.
+                               "1" {"ws" :locked …}}}}}}
+   ```
+
+
+2. If you unlock a workspace version by its number, that number is shown.
+
+   ```
+   {"r" {"parent" :locked
+         :max-v 4}
+
+   ↓ (unlock "r.4")
+
    {"r" {"parent" :locked
          :max-v :locked
-         "_" {"ws" :locked …}}}
+         "4" {"ws" :locked …}}
    ```
 
-   You can access the version by that name: `$r._` You can unlock the version
-   number itself by suffixing the name with `_`:
-
-   ```
-   ↓ (unlock "r.__")
-   {"r" {"parent" :locked
-         :max-v :locked
-         "4" {"ws" :locked …}}}
-   ```
-
-   TODO: Refine this for the nested case.
-
-3. You can access the last reachable version (LRV) of a workspace as `-1`.
-   Unless `:max-v` is unlocked or the LRV is unlocked by its actual number, it
-   is shown as `-1`:
+   You can also access the last reachable version of a workspace as `-1`. After
+   you unlock it, it will be shown by that number only if it would be the same
+   as `:max-v`. Since `:max-v` changes in the current workspace, unlocking `-1`
+   there will show the actual version number:
 
    ```
    {"r" {"parent" :locked
-         :max-v :locked
-         "-1" {"ws" :locked …}}}
+         :max-v 4}
 
-   vs.
+   ↓ (unlock "r.-1")
 
    {"r" {"parent" :locked
-         :max-v 5
-         "5" {"ws" :locked …}}}
+         :max-v :locked   ; now 5
+         "4" {"ws" :locked …}}
    ```
 
-   TODO: This rule is questionable. Maybe we can come up with something better.
+   In a nested workspace `:max-v` stays the same, so `-1` is shown as `-1`:
 
-4. You can access predictable pointers without them being shown:
+   ```
+   {"r" {"5" {"children" {"0" {"parent" :locked
+                               :max-v 4}
+
+   ↓ (unlock "r.5.children.0.-1")
+
+   {"r" {"5" {"children" {"0" {"parent" :locked
+                               :max-v 4
+                               "-1" {"ws" :locked …}
+   ```
+
+4. You can access predictable pointers even when they're not visible:
 
    ```
    {"q" …
@@ -166,32 +200,40 @@ some become obsolete.
    Original:            "What is the capital city of [1: Texas]?"
 
    Reflected once (v1): "What is the capital city of $1|?"
-                        - `|` means that the pointer was originally unlocked.
+                        | means that the pointer was originally unlocked.
    After unlock (v2):   "What is the capital city of [1: Texas]?"
-                        - No difference to the original, so no extra markup.
+                        No difference to the original, so no extra markup.
 
    v1 reflected:        "What is the capital city of $1|=?"
-                        - `|=` means that the pointer was unlocked (`|`) in the
-                          reflected reflected (original) workspace, and that the
-                          lock state in the reflected workspace is the same (`=`)
-                          as in the current workspace.
+                        |= means that the pointer was unlocked (|) in the
+                        reflected reflected (original) workspace, and that the
+                        lock state in the reflected workspace is the same (=) as
+                        in the current workspace.
    After unlock:        "What is the capital city of [1=_: Texas]?"
-                        - `=_` means that the pointer was the same (`=`) in the
-                          reflected reflected (original) workspace, and was
-                          locked (`_`) in the reflected workspace.
+                        =_ means that the pointer was the same (=) in the
+                        reflected reflected (original) workspace, and was locked
+                        (_) in the reflected workspace.
 
    v2 reflected:        "What is the capital city of $1||?"
    After unlock:        "What is the capital city of [1: Texas]?"
-                        - Whenever the markup would only consist of `=`, it can
-                          be left out.
+                        Whenever the markup would only consist of =, it can be
+                        left out.
    ```
 
-   Outside hypertext the markup is prefixed to the entry:
+   Note that this differs from the original model where things that were locked
+   in the original could not be unlocked in the reflection. We might continue
+   this restriction.
+
+   Outside hypertext the markup is appended to the name as well:
 
    ```
-   {"q": :|locked}
+   {"q|": :locked}
    {"sq" {"0" {…
-               "a" "_: Some answer that was originally locked."}}}
+               "a_" "Some answer that was originally locked."}}}
+   {"parent" :locked
+    :max-v :locked
+    "2_" {"ws" :locked …}}
+   ```
 
    There is one `_`, `|` or `=` for each level of reflection.
 
@@ -204,11 +246,39 @@ some become obsolete.
    has to expect when dealing with nested reflection. An alternative is to
    support only single-level reflection.
 
-6. `:max-v` stays unlocked only until the next version of the workspace. Ie. I
-   unlock a `:max-v`, I see it, I issue another command and it's gone again.
-   Alternatively, one could have a constant `:min-max-v`.
+2. If you unlock a reflect that contains exactly one version (must therefore be
+   a reflection of reflection, or a reflection structure passed in hypertext),
+   the version number itself is locked.
 
-   TODO: This is questionable. Think it through more carefully.
+   ```
+   {… {"r" {"parent" :locked
+            :max-v :locked
+            "|*" {"ws" :locked …}}}}
+   ```
+
+   You can access the version by its name: `$…r.*` You can unlock the version
+   number itself by adding `*` to the name:
+
+   ```
+   ↓ (unlock "…r.**")
+
+   {… {"r" {"parent" :locked
+            :max-v :locked
+            "4" {"ws" :locked …}}}}
+   ```
+
+   Note that the lock state markup gets hairy here. The entry name (version
+   number or `*` in this case) has to tell whether the entry value was locked or
+   unlocked in the original. But it also has to tell whether the name itself was
+   locked or unlocked. So we might end up with something like this:
+
+   ```
+   {… "_4|" :locked}
+   ```
+
+   This means that the version number was locked (`_`) in the original, but the
+   now-locked value was unlocked (`|`). This is arcane, but consistent in that
+   the markup always comes before the thing that it tells about.
 
 
 Status
