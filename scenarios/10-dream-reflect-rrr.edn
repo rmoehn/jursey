@@ -1,0 +1,610 @@
+;;;;; Automation-friendly reflection explored with the reflect³ scenario
+
+;; Here I took the ideas from 09-dream-reflect-diff.repl and developed them
+;; further to make them work with nested reflection. Then I distilled them into
+;; /doc/design/002-reflection-automation.md.
+
+[:root "What is the capital of [Texas]?"]
+
+P0
+{:q  "What is the capital of $0?"
+ :sq {}
+ :r :locked}
+
+[:ask "What is the capital city of $q.0?"]
+
+P1
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a :locked}}
+ :r :locked}
+
+[:unlock "sq.0.a"]
+
+;;;; ▶️ BEGIN In child workspace
+
+C0
+{:q "What is the capital city of $0?"
+ :sq {}
+ :r :locked}
+
+[:unlock "q.0"]
+
+C1
+{:q "What is the capital city of [0: Texas]?"
+ :sq {}
+ :r :locked}
+
+[:ask "Who was the father of $q.0?"]
+
+C2
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a :locked}}
+ :r  :locked}
+
+[:unlock "q.0.a"]
+
+;;;; ▶️ BEGIN In grandchild workspace
+
+G0
+{:q "Who was the father of $1?"
+ :r :locked}
+
+[:unlock "r"]
+
+G1
+{:q "Who was the father of $1?"
+ :r {:parent :locked
+     :max-v :locked}}
+
+[:unlock "r.parent"]
+
+G2
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v :locked}
+     :max-v :locked}}
+
+[:unlock "r.parent.-1"]
+
+G3
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  :locked
+              -1 {:ws :locked
+                  :act :locked
+                  :children :locked}}
+     :max-v  :locked}}
+;; -1 could become the actual value when :max-v is unlocked.
+
+[:unlock "r.parent.-1.ws"]
+
+G4
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  :locked
+              -1 {:ws {:q  :locked
+                       :sq :locked
+                       :r  :locked}
+                 :act :locked
+                 :children :locked}}
+     :max-v  :locked}}
+
+[:unlock "r.parent.-1.ws.q"]
+;; For brevity one might be able to unlock things that aren't yet shown, but
+;; that must be there. For example, r.parent.-1.ws.q in G2.
+
+G5
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  :locked
+              -1 {:ws {:q  "What is the capital city of $+1?"
+                       :sq :locked
+                       :r  :locked}
+                  :act :locked
+                  :children :locked}}
+     :max-v  :locked}}
+
+[:unlock "r.parent.-1.ws.sq"]
+
+G6
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  :locked
+              -1 {:ws {:q  "What is the capital city of $+1?"
+                       :sq {}
+                       :r  :locked}
+                  :act :locked
+                  :children :locked}}
+     :max-v  :locked}}
+
+[:unlock "r.parent.-1.ws.q.1"]
+
+G7
+{:q "Who was the father of $1?"
+ :r {:parent {:parent :locked
+              :max-v  :locked
+              -1 {:ws {:q  "What is the capital city of [1: Texas]?"
+                       :sq {}
+                       :r  :locked}
+                  :act :locked
+                  :children :locked}}
+     :max-v  :locked}}
+;; It only points out discrepancies between the original impression and what is
+;; reflected. Once we unlock the hidden $+1, there is no discrepancy anymore, so
+;; we don't need to mark [1:.
+
+;; No sub-question tells me that $q.1 should be the same as $r.parent.-1.ws.q.1.
+
+[:reply "Stephen F. Austin"]
+
+;;;; ⏹ END In grandchild workspace.
+
+C3
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  :locked}
+
+[:unlock "r.max-v"] ; Using skip unlock.
+
+C4
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  4}}
+
+[:unlock "r.3"]
+
+C5
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children :locked}}}
+;; Maybe :max-v should automatically be locked again, so it doesn't disturb
+;; automation.
+
+[:unlock "r.3.children"]
+
+C6
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 :locked}}}}
+
+[:unlock "r.3.children.0"]
+
+C7
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked}}}}}
+
+[:unlock "r.3.children.0.-1"]
+
+C8
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                       -1 {:ws :locked
+                           :act :locked
+                           :children :locked}}}}}}
+
+[:unlock "r.3.children.0.-1.ws"]
+
+C9
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :locked
+                               :r :hidden}
+                          :act :locked
+                          :children :locked}}}}}}
+
+;; Go on a tangent, unlocking the nested r.
+[:unlock "r.3.children.0.-1.ws.r"]
+
+C9t1
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :locked
+                               :r {:parent :hidden
+                                   :max-v :locked}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:unlock "r.3.children.0.-1.ws.r.parent"]
+
+C9t2
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :locked
+                               :r {:parent {:parent :locked
+                                            :max-v :locked
+                                            -1 :hidden}}}
+                                   :max-v :locked}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:unlock "r.3.children.0.-1.ws.r.parent.-1"]
+
+C9t3
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :locked
+                               :r {:parent {:parent :locked
+                                            :max-v :locked
+                                            -1 {:ws :hidden
+                                                :act :locked
+                                                :children :locked}}}
+                                   :max-v :locked}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:unlock "r.3.children.0.-1.ws.r.parent.-1.ws"]
+
+C9t4
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :hidden
+                               :r {:parent {:parent :locked
+                                            :max-v :locked
+                                            -1 {:ws {:q :hidden
+                                                     :sq :hidden
+                                                     :r :locked}}
+                                                :act :locked
+                                                :children :locked}}
+                                   :max-v :locked}
+                          :act :locked
+                          :children :locked}}}}}}
+
+;; Hidden is everything that could have been locked in the original, but
+;; wasn't. – These rules are helpful.
+;; :+lck could have been locked in the layer below, but wasn't. (equiv. to
+;; :hidden)
+;; :++lck could have been locked in both layers below, but wasn't in either.
+;; :=+lck could have been locked in the lowest layer, but wasn't. But it was
+;; locked in the layer below the current.
+;; You get the idea.
+
+[:unlock "r.3.children.0.-1.ws.r.parent.-1.ws.q"]
+
+C9t4
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act :locked
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q :hidden
+                               :r {:parent {:parent :locked
+                                            :max-v :locked
+                                            -1 {:ws {:q "What is the capital city of $++1?"
+                                                     :sq :hidden
+                                                     :r :locked}}
+                                                :act :locked
+                                                :children :locked}}}
+                                   :max-v :locked}
+                          :act :locked
+                          :children :locked}}}}}}
+;; Now it's not clear – $+1 means it's hidden, but is it hidden for the purpose
+;; of this workspace or was it hidden in the reflected workspace?
+;; In other words: In the example above, is the discrepancy with the reflected
+;; workspace or the reflected reflected workspace?
+
+;; With the current syntax, the output for G6 and G7 in the above workspace
+;; would be the same.
+;; Options:
+;; G6: $=+1 (no discr with the reflection + we know that it's two levels deep –
+;; but if it's passed around, we don't know that. So this syntax has to be
+;; independent from the surroundings.)
+;;   → [-=1: Texas]
+;; G7: $++1 (discrepancy with the reflection)
+;;   → [==1: Texas] (discrepancy with neither the first reflection nor the original)
+
+;; $=+1
+;; [-=1
+
+;; $=1 → $=+1 → [-=1
+
+;; $++1
+;; [==1 ← Could be shortened to [1, because no discrepancy exists.
+
+;; $+1 → $++1 → [==1
+
+;; Should the state be revealed level by level or should the thing just be
+;; revealed immediately? I can't think of an example pro or con now. We would
+;; have to see this with automation in an actual application like diffing. But
+;; Double reflection should be seldom enough that it doesn't matter and we can
+;; just reveal immediately.
+
+;; How could it look outside hypertext?
+;; :+locked, :=+locked / :+lck, :=+.lck
+;; ↑ same as :hidden
+
+;; What does it mean to pass around a reflected reflection? ‘Here is how that
+;; part of the workspace looked when it reflected another workspace.’ Hm.
+;; Should I just disallow nested reflection altogether? Is that possible for
+;; when I put reflected things in hypertext? Then that thing would have to stay
+;; hidden when the hypertext is reflected.
+;; This would be one option for keeping it sane.
+
+;; One could think that it's enough to limit the hidden thing to outside
+;; hypertext and just show everything in hypertext. But in the next layer of
+;; reflection, the ambiguity will also show up outside hypertext, I think.
+
+[:unlock "r.3.act"]
+
+;; I guess it's easier to say everything that was originally visible is :+lck,
+;; whether it could have been locked or not.
+
+C10
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act {:cmd :locked :arg :locked}
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q  :+lck
+                               :sq :+lck
+                               :r  :+lck}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:unlock ["r.3.act.cmd" "r.3.act.arg"]]
+
+C11
+{:q  "What is the capital city of [0: Texas]?"
+ :sq {0 {:q "Who was the father of $q.0?"
+         :a "Stephen F. Austin"}}
+ :r  {:parent :locked
+      :max-v  :locked
+      3 {:ws :locked
+         :act {:cmd :unlock :arg "r"}
+         :children {0 {:parent :locked
+                       :max-v :locked
+                      -1 {:ws {:q  :+lck
+                               :sq :+lck
+                               :r  :+lck}
+                          :act :locked
+                          :children :locked}}}}}}
+
+[:reply "Austin"]
+
+;;;; ⏹ END In child workspace.
+
+P2
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r :locked}
+
+[:unlock "r.max-v"]
+
+P3
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 3}}
+
+[:unlock "r.2"]
+
+P4
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 4
+     2 {:ws :locked
+        :act :locked
+        :children :locked}}}
+
+[:unlock "r.2.children"]
+
+P5
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 5
+     2 {:ws :locked
+        :act :locked
+        :children {0 :locked}}}}
+
+[:unlock "r.2.children.0"]
+
+P6
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 6
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked}}}}}
+
+[:unlock "r.2.children.0.-1"]
+
+P7
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws :locked
+                           :act :locked
+                           :children :locked}}}}}}}
+
+[:unlock "r.2.children.0.10.ws"]
+
+P8
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q :+lck
+                                :sq :+lck
+                                :r :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+[:unlock ["r.2.children.0.10.ws.q" "r.2.children.0.10.ws.r"]]
+
+P9
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q "What is the capital of $+1?"
+                                :sq :+lck
+                                :r {:parent :locked
+                                    :max-v :locked
+                                    _ :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+;; When there is only one version to show and it hasn't explicitly been unlocked
+;; by number before, then it will be shown as _ (or +_ etc.). If you need to
+;; reveal the number behind it, you can use the magic __ in the path.
+;; → So now version numbers are locked/hidden as well. → -1 is ambiguous → Need
+;; a different syntax. $^1 $_1 $=1 _-1 =-1 ^-1 ^*
+
+;; The last version is shown as -1 as long as :max-v is locked.
+
+[:unlock "r.2.children.0.10.ws.r._"]]
+P10
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 7
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v :locked
+                      {-1 {:ws {:q "What is the capital of $+1?"
+                                :sq :+lck
+                                :r {:parent :locked
+                                    :max-v :locked
+                                    3 :+lck}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+
+
+P8
+{:q  "What is the capital of $0?"
+ :sq {0 {:q "What is the capital city of $q.0?"
+         :a "Austin"}}
+ :r {:parent :locked
+     :max-v 8
+     2 {:ws :locked
+        :act :locked
+        :children {0 {:parent :locked
+                      :max-v 10
+                      {10 {:ws {:q  "What is the capital city of [0: Texas]?"
+                                :sq {0 {:q "Who was the father of $q.0?"
+                                        :a "Stephen F. Austin"}}
+                                :r  {:parent :locked
+                                     :max-v  10
+                                     3 {:ws :locked
+                                        :act [:unlock "r"]
+                                        :children {0 {:parent :locked
+                                                      :max-v 4
+                                                      4 {:ws {:q "Who was the father of $1?"
+                                                              :r {:parent {:parent :locked
+                                                                           :max-v  2
+                                                                           2 {:ws {:q  "What is the capital city of [0: Texas]?"
+                                                                                   :sq {0 {:q "Who was the father of $q.0?"
+                                                                                           :a :locked}}
+                                                                                   :r  :locked}
+                                                                              :act :locked
+                                                                              :children :locked}}
+                                                                  :max-v  4}}
+                                                         :act :locked
+                                                         :children :locked}}}}}}
+                           :act :locked
+                           :children :locked}}}}}}}
+
+;; How would I unlock r.2.children.0.10.ws.r.2, for example? I could just
+;; unlock r.2.children.0.2.
+
+;; Nested reflection looks quite straightforward now. Better than in
+;; reflect-reflect-reflect-2.edn.
