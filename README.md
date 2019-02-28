@@ -40,12 +40,11 @@ Applications of reflection
 --------------------------
 
 - [Ask for clarification of a question](test/clarification-swallows.repl)
-- [Diff workspaces](test/reflection-diff.repl)
+- [Diff workspaces](scenarios/08-failed-automation-diff.repl)
 
-If you search the files linked above for ‘ISSUE’, you will find comments about
-problems with the Jursey model. [This
-proposal](doc/design/002-reflection-automation.md) addresses some of the
-problems.
+If you search the second file and [this](test/clarification-airplane.repl) for
+‘ISSUE’, you will find comments about problems with the Jursey model. [This
+proposal](doc/design/002-reflection-automation.md) addresses some of them.
 
 
 Limitations
