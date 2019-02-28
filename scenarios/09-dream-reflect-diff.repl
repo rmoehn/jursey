@@ -1,3 +1,11 @@
+;;;;; Exploration of diffing with automation-friendly reflection
+
+;; This is another attempt at implementing workspace diff in Jursey. (The first
+;; one is 08-failed-automation-diff.repl.) This time I imagined how it could
+;; look with more automation-friendly reflection. I got stuck part-way through,
+;; but I took the ideas and refined them in 10-dream-reflect-rrr.edn and further
+;; in /doc/design/002-reflection-automation.md.
+
 (reset)
 
 (ask-root "The root question doesn't matter.")
