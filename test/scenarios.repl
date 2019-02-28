@@ -59,7 +59,7 @@
                "act" [:unlock "r"]}}}})
 
 ;; TODO: When laundering of nested reflection roots is supported, add the
-;; rest of scenarios/07-reflect-ask-reply.edn. (RM 2019-02-04)
+;; rest of /scenarios/07-reflect-ask-reply.edn. (RM 2019-02-04)
 ;(run [:ask "Give me this pointer unchanged: $sq.2.a.0.0.ws.r"])
 
 (TESTING "Scenario: Reflect earlier reflect")

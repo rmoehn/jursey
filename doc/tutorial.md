@@ -28,7 +28,7 @@
   Note that you cannot unlock a reflected pointer in place. What is reflected is
   supposed to be an unchanged snapshot of the past; you can't change it by
   unlocking something. If you still want to know what is behind the pointer, you
-  can launder it. See the [feature demo](doc/feature_demo.clj), section
+  can launder it. See the [feature demo](feature_demo.clj), section
   ‘Unlocking reflected pointers’.
 
 - `(reply …)` Answer the current workspace's question. Unblock all workspaces
