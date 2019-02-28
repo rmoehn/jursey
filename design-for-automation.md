@@ -76,7 +76,6 @@ Context
 
 Decision
 --------
-TODO: Adjust the item numbers.
 
 Based on explorations in the files
 [09-dream-reflect-rrr.edn](/scenarios/09-dream-reflect-rrr.edn) and
@@ -98,7 +97,7 @@ some become obsolete.
    - When you pass a version, the containing reflect is automatically passed
      along with it. TODO: Should I drop this behaviour?
 
-6. `:max-v` stays unlocked only until it would be incremented. Ie. I unlock
+2. `:max-v` stays unlocked only until it would be incremented. Ie. I unlock
    `r.max-v`, I see it, I issue another command and it's gone again. `:max-v`s
    further down a reflection tree will never be incremented, so they stay
    unlocked.
@@ -122,7 +121,7 @@ some become obsolete.
    ```
 
 
-2. If you unlock a workspace version by its number, that number is shown.
+3. If you unlock a workspace version by its number, that number is shown.
 
    ```
    {"r" {"parent" :locked
@@ -182,7 +181,7 @@ some become obsolete.
    …
    ```
 
-4. You can unlock multiple pointers at once:
+5. You can unlock multiple pointers at once:
 
    ```
    {"q" "What is the mass of $1 $3 in $5?"}
@@ -192,7 +191,7 @@ some become obsolete.
    {"q" "What is the mass of [1: 1] [3: three-pound bread] in [5: kg]?"}
    ```
 
-5. All entries and pointers in reflection structures begin locked and can be
+6. All entries and pointers in reflection structures begin locked and can be
    unlocked. Differences in lock state between the original and the reflection
    are communicated through symbols after the pointer name. Example:
 
@@ -246,7 +245,7 @@ some become obsolete.
    has to expect when dealing with nested reflection. An alternative is to
    support only single-level reflection.
 
-2. If you unlock a reflect that contains exactly one version (must therefore be
+7. If you unlock a reflect that contains exactly one version (must therefore be
    a reflection of reflection, or a reflection structure passed in hypertext),
    the version number itself is locked.
 
@@ -276,9 +275,9 @@ some become obsolete.
    {… "_4|" :locked}
    ```
 
-   This means that the version number was locked (`_`) in the original, but the
-   now-locked value was unlocked (`|`). This is arcane, but consistent in that
-   the markup always comes before the thing that it tells about.
+   This means that the version *number* was locked (`_`) in the original, but
+   the now-locked *value* was unlocked (`|`). This is arcane, but consistent in
+   that the markup always stands before the thing that it tells about.
 
 
 Status
