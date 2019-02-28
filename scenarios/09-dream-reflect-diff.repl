@@ -1,0 +1,282 @@
+;;;;; Exploration of diffing with automation-friendly reflection
+
+;; This is another attempt at implementing workspace diff in Jursey. (The first
+;; one is 08-failed-automation-diff.repl.) This time I imagined how it could
+;; look with more automation-friendly reflection. I got stuck part-way through,
+;; but I took the ideas and refined them in 10-dream-reflect-rrr.edn and further
+;; in /doc/design/002-reflection-automation.md.
+
+(reset)
+
+(ask-root "The root question doesn't matter.")
+(start-working)
+(ask "What is the mass of [1] [three-pound loaf] in [kg]?")
+(ask "What is the mass of [20] [three-pound loaf] in [kg]?")
+(unlock "$sq.0.a")
+
+(unlock ["$q.1" "$q.3" "$q.5"])
+(ask "1 pound = ? kg")
+(unlock "$sq.0.a")
+(reply "approx. 0.5")
+
+;; The first workspace in the diff.
+{"q" "What is the mass of [1: 1] [3: three-pound loaf] in [5: kg]?",
+ "sq" {"0" {"q" "1 pound = ? kg", "a" "approx. 0.5"}},
+ "r" :locked}
+
+(reply "approx. 1.5 kg")
+
+(unlock "$sq.1.a")
+;; Automation takes care of unlocking q.1,3,5.
+(ask "1 pound = ? kg")
+(unlock "$sq.0.a")
+(ask "What is 20 * 1.5 kg?")
+
+;; The second workspace in the diff.
+{"q" "What is the mass of [1: 20] [3: three-pound loaf] in [5: kg]?",
+ "sq" {"0" {"q" "1 pound = ? kg", "a" "approx. 0.5"},
+       "1" {"q" "What is 20 * 1.5 kg?", "a" :locked}},
+ "r" :locked}
+
+;; The second workspace in the diff.
+"{`q` `What is the mass of [1: 20] [3: three-pound loaf] in $5?`,
+  `sq` {`0` {`q` `1 pound = ? kg`, `a` `approx. 0.5`},
+        `1` {`q` `What is 20 * 1.5 kg?`, `a` :locked}},
+  `r` :locked}"
+
+"{`q` `What is the mass of !$x.q.1 !$x.q.3 in ?$x.q.5?`"
+
+(reply "$sq.1.a")
+
+{"q" "The root question doesn't matter.",
+ "sq" {"0" {"q" "What is the mass of [1: 1] [3: three-pound loaf] in [5: kg]?",
+            "a" "approx. 1.5 kg"},
+       "1" {"q" "What is the mass of [1: 20] [3: three-pound loaf] in [5: kg]?",
+            "a" "$0"}},
+ "r" :locked}
+
+;; I don't need to unlock anything to be able to say what I want.
+(ask "Give me a diff of $r.-1.children.0.-1 and $r.-1.children.1.-1")
+
+{"q" "The root question doesn't matter.",
+ "sq" {"0" {"q" "What is the mass of [1: 1] [3: three-pound loaf] in [5: kg]?",
+            "a" "approx. 1.5 kg"},
+       "1" {"q" "What is the mass of [1: 20] [3: three-pound loaf] in [5: kg]?",
+            "a" "$0"}
+       "2" {"q" "Give me a diff of $r.-1.children.0.-1 and $r.-1.children.1.-1.",
+            "a" :locked},
+ "r" :locked}}
+
+(unlock "$sq.2.a")
+
+;; I'll continue with unfriendlily numbered pointers, but ideally they would be
+;; 0, 1, 2, ….
+{"q" "Give me a diff of the versions $1 and $3."
+ "sq" {}
+ "r" :locked}
+
+(unlock ["$q.1" "$q.3"])
+{"q" "Give me a diff of the versions [1:
+{:parent :locked
+ :max-v :locked
+ “_” {“ws” {“q” :locked
+            ”sq” :locked
+            “r” :hidden}
+      “children” :locked
+      “act” :locked}}
+]
+and [3:
+{:parent :locked
+ :max-v :locked
+ “_” {“ws” {“q” :locked
+            ”sq” :locked
+            “r” :hidden}
+      “children” :locked
+      “act” :locked}}
+]."
+ "sq" {}
+ "r" :locked}
+;; Because for the reflected “r” I can't distinguish between ‘locked in the
+;; original’ and ‘locked for information hiding here’, I call it :hidden. This
+;; might not hold up in the nested case.
+;; _ appears when only one version is unlocked. This way automation doesn't have
+;; to care which version it actually is. It might become necessary to be able to
+;; find out what _ maps to, though. And there is the question how _ should
+;; interact with the unlocking of a version. – If the version is the same as the
+;; _, does the _ stay or get replaced with the version number?
+
+(ask "Give me a diff of the hypertexts $q.1._.ws.q and $q.3._.ws.q.")
+
+;; Leaving out the reflected things. Please refer to above.
+{"q"  "Give me a diff of the versions [1: …] and [3: …]."
+ "sq" {"0" {"q" "Give me a diff of the hypertexts $q.1._.ws.q and $q.3._.ws.q."
+            "a" :locked}}
+ "r"  :locked}
+
+;; Normally I wouldn't unlock this here, but for the sake of the exploration I
+;; want to know quickly what troubles I will run into in the sub-workspace.
+(unlock "$sq.0.a")
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {}
+ "r"  :locked}
+
+(ask "Are $q.1 and $q.3 equal at the top level?")
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" :locked}}
+ "r"  :locked}
+
+(unlock "$sq.0.a")
+
+{"q" "Are $1 and $3 equal at the top level?"}
+;; Leaving out empty sub-questions and locked "r" from now on.
+
+(unlock ["$q.1" "$q.3"])
+
+;; (str …) is only for readability. It wouldn't appear in the actual output.
+{"q" (str "Are [1: <What is the mass of &1 &3 in &5?>]"
+          " and [3: <What is the mass of &1 &3 in &5?>] equal at the top level?")}
+
+(reply "Yes.")
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "Yes."}}}
+
+(ask "Give me the pointers in $q.1 and $q.3 pairwise.")
+
+;; For brevity I don't make the question clearer.
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "Yes."}
+       "1" {"q" "Give me the pointers in $q.1 and $q.3 pairwise."
+            "a" :locked}}}
+
+(unlock "$sq.1.a")
+
+{"q" "Give me the pointers in $q.1 and $q.3 pairwise."}
+
+(unlock ["$q.1" "$q.3"])
+
+{"q" (str "Give me the pointers in"
+       " [1: <What is the mass of &1 &3 in &5?>]"
+       " and [3: <What is the mass of &1 &3 in &5?>] pairwise.")}
+
+(reply "[[$q.1.1 $q.3.1] [[$q.1.3 $q.3.3] [[$q.1.5 $q.3.5] []]]]")
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "Yes."}
+       "1" {"q" "Give me the pointers in $q.1 and $q.3 pairwise."
+            "a" "$0"}}}
+
+(ask "Map [Give me a diff of the hypertexts %1 and %2.] over $sq.1.a.0.")
+;; Again early unlock for the sake of exploration.
+(unlock "$sq.2.a")
+
+{"q" "Map $1 over $3."}
+
+(ask "Is $q.3 an empty list?")
+(unlock "$sq.0.a")
+
+{"q" "Is $1 an empty list?"}
+(unlock "$q.1")
+
+{"q" "Is [1: &1 $3] an empty list?"}
+(reply "No.")
+
+{"q" "Map $1 over $3."
+ "sq" {"0" {"q" "Is $q.3 an empty list?"
+            "a" "No."}}}
+
+(unlock "$q.3")
+
+{"q" "Map $1 over [3: &1 $3]."
+ "sq" {"0" {"q" "Is $q.3 an empty list?"
+            "a" "No."}}}
+
+(ask "Apply $q.1 to $q.3.1.")
+(ask "Map $q.1 over $q.3.2.")
+(reply "[$sq.1.a $sq.2.a]")
+
+;; Eagerly working on a few workspaces. First the base case of the "map".
+{"q" "Is [1: ] an empty list?"}
+(reply "Yes.")
+{"q" "Map $1 over $3."
+ "sq" {"0" {"q" "Is $q.3 an empty list?"
+            "a" "Yes."}}}
+(reply "$q.3")
+
+;; Now the apply.
+{"q" "Apply $1 to $3."}
+(unlock "$q.1")
+{"q" "Apply [1: Give me a diff of the hypertexts %1 and %2.] to $3."}
+(unlock "$q.3")
+{"q" "Apply [1: Give me a diff of the hypertexts %1 and %2.] to [3: &1 &3]."}
+(ask "Give me a diff of the hypertexts $q.3.1 and $q.3.3.")
+(reply "$sq.0.a")
+
+;; And the hypertext diffing base case twice.
+;; Much happens through automation here.
+
+("q" "Are [1: <1>] and [2: <20>] equal at the top level?")
+(reply "No.")
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "No."}}}
+(reply "($q.1 $q.3 └┘)")
+
+("q" "Are [1: <three-pound loaf>] and [2: <three-pound loaf>] equal at the top level?")
+(reply "Yes.")
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "Yes."}
+       "1" {"q" "Give me the pointers in $q.1 and $q.3 pairwise."
+            "a" "$0"}
+       "2" {"q" "Map [Give me a diff of the hypertexts %1 and %2.] over $sq.1.a.0."
+            "a" "$0"}}}
+
+{"q"  "Give me a diff of the hypertexts $1 and $3."
+ "sq" {"0" {"q" "Are $q.1 and $q.3 equal at the top level?"
+            "a" "Yes."}
+       "1" {"q" "Give me the pointers in $q.1 and $q.3 pairwise."
+            "a" "$0"}
+       "2" {"q" "Map [Give me a diff of the hypertexts %1 and %2.] over $sq.1.a.0."
+            "a" "$0"}
+       "3" {"q" "Replace each pointer and non-pointer substring in $q.1 with └┘."
+            "a" :locked}
+       "4" {"q" "Map [Give me element no. [0].] over $sq.2.a.0."
+            "a" :locked}
+       "5" {"q" "Map [Give me element no. [1].] over $sq.2.a.0."
+            "a" :locked}
+       "6" {"q" "Map [Give me element no. [2].] over $sq.2.a.0."
+            "a" :locked}}}
+
+;; How do I put this all together without my brain falling apart? Focus on one
+;; level at the time.
+
+;; Angle brackets indicate that this is reflected content and pointers are as
+;; they were originally.
+;; Ampersand indicates that the pointer is hidden, whether it originally was
+;; locked or not. Can I just achieve this with a pointer to a pointer?
+
+[["1" "20" nil] [nil nil "three-pound loaf"] [nil nil "5 kg"]]
+
+(clojure.data/diff [2 2 2 3 5 5 5] [1 1 1 3 4 4 4])
+
+;; If we diff all the way down into hypertext, the result would look similar to
+;; this:
+"({`q` [1: `└┘&1└┘└┘└┘└┘`], `sq` {}}
+  {`q` [3: `└┘&1└┘└┘└┘└┘`],
+   `sq` {`1` {`q` [5: `What is 20 * 1.5 kg?`], `a` [7: :locked]}}}
+  {`q` [9: `What is the mass of └┘ &1 in &3?`
+   `sq` {`0` {`q` [11: `1 pound = ? kg`], `a` [13: `approx. 0.5`]}}})"
+
+;; TODO: How would it look for nested hypertext? (RM 2019-02-25)
+;; How would it look in reality?
+
+;; If they are equal at one level, I have to look at the components. If they are
+;; unequal at a level, I just return the parts.
