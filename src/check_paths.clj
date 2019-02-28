@@ -1,4 +1,6 @@
-(ns scratch
+(ns check-paths
+  "Very sloppily written code for finding possibly broken paths in files in a
+  Git repo."
   [:require [clojure.java.io :as io]
             [clojure.string :as string]])
 
