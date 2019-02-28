@@ -1,12 +1,13 @@
 So what? – What do we learn from Jursey and its implementation of reflection?
 -----------------------------------------------------------------------------
 
-I have learned a lot about my work process from developing Jursey. My
-conclusions for research are comparatively weak – maybe you can come up with
-more:
-
 - One can implement reflection in less than a person-month within the Patchwork
   model. (Ie., workspaces with question and sub-questions, and their answers.)
+
+- The basic (but complete) form of reflection that I implemented [doesn't play
+  well](/scenarios/08-failed-automation-diff.repl) with automation. It should be
+  possible to [repair this](/doc/design/002-reflection-automation.md), but it
+  will make the implementation and the UI more complicated.
 
 - Datomic makes it easy to go back in time. With a conventional database one
   would have to develop one's own mechanisms for that.
