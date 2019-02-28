@@ -1,4 +1,5 @@
-# Summary of design decisions about reflection
+DR 1: Summary of design decisions about reflection
+==================================================
 
 - Pointers that point at reflection structure: Ordinary pointers suffice.
 
@@ -26,13 +27,13 @@
     - This entails that if a reflected "r" entry is unlocked, it must have been
       unlocked by the workspace it belongs to. Thus we can see what was
       reflected when.
-    - See also scenarios/05-reflect-reflect-reflect-3.edn.
+    - See also [scenario 5](/scenarios/05-reflect-reflect-reflect-3.edn).
 
 - Identifying children:
     - I might have to add :qa/workspace to retain the reference from parent to
       child after an answer is given. This is not crucial, but would make it
       easier to identify the children.
-    - See also scenarios/06-reflect-root-earlier-reflect.edn.
+    - See also [scenario 6](/scenarios/06-reflect-root-earlier-reflect.edn).
 
 - Reachability:
     - The people of the past cannot look into their future, even though it has
@@ -51,7 +52,7 @@
     - :version/tx and :reflect/reachable must be monotonically decreasing on
       every branch of the reflection tree.
     - See also the rambling comments at the bottom of
-      scenarios/07-reflect-ask-reply.edn.
+      [scenario 7](/scenarios/07-reflect-ask-reply.edn).
 
 - Putting a pointer at a reflection structure in a root answer.
     - Have to be careful not to automatically unlock any reflection entries.
@@ -69,11 +70,11 @@
       thus grow the tree from one level higher.
     - Except when the parent is a root question pseudo-workspace. In this case
       there should be no parent entry.
-    - See also scenarios/06-reflect-root-earlier-reflect.edn.
+    - See also [scenario 6](/scenarios/06-reflect-root-earlier-reflect.edn).
 
 - Reflecting workspaces that reflected other workspaces, and unlocking more of
   the other workspaces' reflection pointers:
-    - See scenarios/05-reflect-reflect-reflect-3.edn.
+    - See [scenario 5](/scenarios/05-reflect-reflect-reflect-3.edn).
     - Reflected workspaces' reflection entries cannot be unlocked.
     - They can be laundered through a sub-question.
     - All of a reflected workspace's reflection entries are also reachable
