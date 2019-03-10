@@ -19,6 +19,7 @@ Table of contents:
   - [Branches](#branches)
   - [TODOs](#todos)
   - [Design](#design)
+  - [Acknowledgements](#acknowledgements)
   - [References](#references)
   - [License](#license)
 
@@ -201,6 +202,13 @@ Design
 
 - Copying hypertext makes equality test for nested structures more complex.
   With persistent data structures one could just test identity.
+
+
+Acknowledgements
+----------------
+
+Thanks to Andreas Stuhlmüller and Derek Elkins for their advice. And thanks to
+Paul Christiano for funding this work.
 
 
 References
